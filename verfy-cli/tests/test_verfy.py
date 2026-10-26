@@ -395,6 +395,44 @@ class CLI(unittest.TestCase):
         code, out, _ = self.run_cli("ledger", "verify", home=home)
         self.assertEqual(code, 0)
 
+    def test_ledger_show_json_preserves_recent_signed_receipts(self):
+        with tempfile.TemporaryDirectory() as home:
+            path = Path(home) / "receipts.jsonl"
+            key = Key.generate()
+            ledger = Ledger(path, key)
+            for i in range(3):
+                ledger.append(
+                    agent="test", session="synthetic",
+                    action={"server": "demo", "tool": "echo", "arguments": {"message": f"hello {i} ✓"}},
+                    decision={"verdict": "allow", "rules": []},
+                    outcome={"status": "ok", "result_sha256": None},
+                    policy_sha256="sha256:0", include_args=True,
+                )
+            stored = read_ledger(path)
+            before = path.read_bytes()
+            for options, expected in [(("-n", "2"), stored[-2:]), (("-n", "5"), stored), ((), stored)]:
+                with self.subTest(options=options):
+                    code, out, err = self.run_cli("ledger", "show", "--json", "--ledger", str(path), *options, home=home)
+                    self.assertEqual(code, 0, err)
+                    receipts = json.loads(out)
+                    self.assertEqual(receipts, expected)
+                    self.assertTrue(all("sig" in r and verify_receipt(r, key.public) for r in receipts))
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_ledger_show_json_empty_ledger(self):
+        with tempfile.TemporaryDirectory() as home:
+            path = Path(home) / "ledger.jsonl"
+            for exists in (False, True):
+                with self.subTest(exists=exists):
+                    if exists:
+                        path.touch()
+                    code, out, err = self.run_cli("ledger", "show", "--json", home=home)
+                    self.assertEqual(code, 0, err)
+                    self.assertEqual(json.loads(out), [])
+            code, out, err = self.run_cli("ledger", "show", home=home)
+            self.assertEqual(code, 0, err)
+            self.assertEqual(out, "No receipts yet.\n")
+
 
 if __name__ == "__main__":
     unittest.main()

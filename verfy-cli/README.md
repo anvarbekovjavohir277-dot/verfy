@@ -85,9 +85,14 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 verfy check "git push --force"                       # 0 allow · 1 ask · 2 deny
 verfy check --tool send_payment --args '{"amount": 500}'
 verfy ledger show
+verfy ledger show --json -n 2                        # latest two signed receipts as a JSON array
 verfy verify                                         # your own ledger
 verfy verify --ledger receipts.jsonl --pub <key> --kid <chain> [--start-after <hash>]   # an evidence export
 ```
+
+`ledger show --json` preserves the stored receipt fields, including signatures. It
+returns up to the last `-n` receipts (20 by default), in ledger order, or `[]` when
+the ledger is empty.
 
 ## Verfy Cloud
 
