@@ -1,9 +1,9 @@
 """Copy the public parts of this private repository into verfy-releases, the public one.
 
 The CLI's source stays here. verfy-releases carries what people need without it: the Claude Code plugin
-marketplace, the security policy and its limits, the CLA, the changelog, the research report and its
-scripts, the advisories (open data) and the CI example. Run it after changing any of them, then review
-and commit verfy-releases.
+marketplace, the security policy and its limits, the CLA, the changelog, the demo video, the research
+report and its scripts, the advisories (open data) and the CI example. Run it after changing any of
+them, then review and commit verfy-releases.
 
     python scripts/sync-public.py [PATH]    # PATH defaults to ../verfy-releases
 """
@@ -24,6 +24,7 @@ MIRROR = {
     "CHANGELOG.md": "CHANGELOG.md",
     "docs/SECURITY_LIMITATIONS.md": "docs/SECURITY_LIMITATIONS.md",
     "docs/research": "docs/research",
+    "docs/assets": "docs/assets",
     "research": "research",
     "advisories": "advisories",
     "verfy-cli/examples/ci": "examples/ci",
