@@ -25,10 +25,10 @@ dependencies = []
 [project.urls]
 Homepage = "https://verfy-tech.vercel.app"
 Documentation = "https://verfy-tech.vercel.app/docs"
-Repository = "https://github.com/anvarbekovjavohir277-dot/verfy"
-Issues = "https://github.com/anvarbekovjavohir277-dot/verfy/issues"
-Changelog = "https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/CHANGELOG.md"
-Releases = "https://github.com/anvarbekovjavohir277-dot/verfy/releases"
+Changelog = "https://verfy-tech.vercel.app/changelog"
+Downloads = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases"
+Issues = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues"
+Security = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md"
 
 [project.optional-dependencies]
 fast = ["cryptography>=43"]

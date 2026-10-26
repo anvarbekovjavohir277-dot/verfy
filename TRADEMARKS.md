@@ -16,4 +16,4 @@ The MIT license covers the code in this repository. It does not give anyone the 
 - **Products and hosted services** must not use "Verfy" or a confusingly similar name, domain or logo, or suggest that we made or endorse them.
 - **Merchandise and events** using the name or logo need written permission.
 
-Questions or permission requests: open an issue at https://github.com/anvarbekovjavohir277-dot/verfy/issues.
+Questions or permission requests: open an issue at https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues.

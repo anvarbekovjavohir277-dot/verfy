@@ -45,14 +45,13 @@ class VersionTests(unittest.TestCase):
         self.assertRegex(text, rf'(?m)^version = "{re.escape(__version__)}"$')
 
     def test_plugin_and_docs_carry_this_version(self):
-        # scripts/bump.py X.Y.Z sets all of them; the README pins of the GitHub Action follow every release
+        # scripts/bump.py X.Y.Z sets all of them; the README's CI example pins every release
         repo = ROOT.parent
         plugin = repo / "plugins" / "verfy" / ".claude-plugin" / "plugin.json"
         if not plugin.exists():
             self.skipTest("not a checkout of the verfy repository")
         self.assertEqual(json.loads(plugin.read_text(encoding="utf-8"))["version"], __version__)
-        pins = [v for doc in (ROOT / "README.md", repo / "README.md")
-                for v in re.findall(r"verfy@cli-v(\d+\.\d+\.\d+)", doc.read_text(encoding="utf-8"))]
+        pins = re.findall(r"verfy==(\d+\.\d+\.\d+)", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertTrue(pins)
         self.assertEqual(set(pins), {__version__}, "run python scripts/bump.py " + __version__)
 

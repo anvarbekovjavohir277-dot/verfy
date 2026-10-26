@@ -4,7 +4,7 @@
 
 Please report security issues **privately**:
 
-Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy/security/advisories/new)). Only the maintainers see the report.
+Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)). Only the maintainers see the report.
 
 A way for an agent to get past Verfy (a command, path or tool call that should be denied or asked about but is allowed) counts as a vulnerability: report it privately the same way.
 
@@ -32,8 +32,10 @@ People who reported a valid bypass or vulnerability, with their permission:
 ## Scope
 
 In scope:
-- this repository: the `verfy` CLI, its JavaScript engine, the GitHub Action, the installers and CI configuration;
-- the hosted service at https://verfy-tech.vercel.app (Verfy Cloud: the website, the Team dashboard and the API devices use). Its code is not public; report issues the same way.
+- the `verfy` CLI as published on PyPI and as the standalone builds in this repository, the Claude Code plugin and the installers;
+- the hosted service at https://verfy-tech.vercel.app (Verfy Cloud: the website, the Team dashboard and the API devices use).
+
+Report issues in either the same way.
 
 Out of scope: vulnerabilities in Supabase, Vercel or GitHub themselves (report to them), social engineering, denial-of-service testing, findings that require a fully compromised developer machine, and testing that touches other people's data or organizations.
 
@@ -43,6 +45,6 @@ We will not pursue legal action against good-faith research that stays within th
 
 ## Supported versions
 
-Only the latest release on `main` receives security fixes during the MVP phase.
+Only the latest release receives security fixes during the MVP phase.
 
 See also: [`docs/SECURITY_LIMITATIONS.md`](docs/SECURITY_LIMITATIONS.md).

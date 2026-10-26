@@ -3,7 +3,9 @@ name: End-to-end
 # A user's first hour on clean Linux, macOS and Windows runners: the wheel goes into a new virtual environment,
 # then scripts/e2e.py runs verfy init, lock files, lock check (and a changed CLAUDE.md and a rug pull failing it),
 # Snyk and Cisco imports, the Claude Code hook, and the Claude Code plugin installed from this checkout.
-# CI runs it on every push and pull request; publish.yml runs it on the exact files before they go to PyPI.
+# Each runner also runs the unit tests first. CI runs it on Linux for every push and pull request; publish.yml
+# runs it on all three systems on the exact files before they go to PyPI (a private repository's Actions minutes
+# are limited, and macOS and Windows minutes count several times).
 on:
   workflow_call:
     inputs:
@@ -11,7 +13,16 @@ on:
         description: Name of an artifact with the built wheel; empty builds it here
         type: string
         default: ""
+      os:
+        description: JSON list of runners
+        type: string
+        default: '["ubuntu-latest", "macos-15", "windows-latest"]'
   workflow_dispatch:
+    inputs:
+      os:
+        description: JSON list of runners
+        type: string
+        default: '["ubuntu-latest", "macos-15", "windows-latest"]'
 
 permissions:
   contents: read
@@ -24,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15, windows-latest] # macos-latest runners are often not acquired
+        os: ${{ fromJSON(inputs.os) }} # macos-15: macos-latest runners are often not acquired
         python: ["3.13"]
         include:
           - os: ubuntu-latest
@@ -42,6 +53,13 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Unit tests (pure-Python Ed25519) and the JavaScript engine
+        shell: bash
+        env:
+          VERFY_PURE_PYTHON: "1"
+        run: |
+          (cd verfy-cli && python -m unittest discover -s tests)
+          node verfy-cli/tests/test_engine.mjs
       - name: Claude Code, for the plugin step (no account needed to install plugins)
         run: npm install --global @anthropic-ai/claude-code@2.1.310
       - name: The wheel that is about to be published

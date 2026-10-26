@@ -14,11 +14,11 @@ verfy init
 Then add this repository as a plugin marketplace and install the plugin:
 
 ```bash
-claude plugin marketplace add anvarbekovjavohir277-dot/verfy
+claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
 claude plugin install verfy@verfy
 ```
 
-Inside a session, `/plugin marketplace add anvarbekovjavohir277-dot/verfy` and `/plugin install verfy@verfy` do the same.
+Inside a session, `/plugin marketplace add anvarbekovjavohir277-dot/verfy-releases` and `/plugin install verfy@verfy` do the same.
 
 An organization can require the marketplace and the plugin on every machine through managed settings (`extraKnownMarketplaces` and `enabledPlugins`); see https://code.claude.com/docs/en/plugins/org.
 

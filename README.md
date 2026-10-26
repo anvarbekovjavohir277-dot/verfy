@@ -1,9 +1,7 @@
 # Verfy
 
-[![CI](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml/badge.svg)](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/verfy)](https://pypi.org/project/verfy/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/anvarbekovjavohir277-dot/verfy/badge)](https://scorecard.dev/viewer/?uri=github.com/anvarbekovjavohir277-dot/verfy)
 
 <img src="docs/assets/verfy-lock-demo.gif" width="494" alt="Verfy lock demo: the approved read_file tool is allowed; after the server quietly adds an instruction to its description, the same call is denied with VFY-TOOL-004.">
 
@@ -68,7 +66,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1                            
 ### As a Claude Code plugin
 
 ```bash
-claude plugin marketplace add anvarbekovjavohir277-dot/verfy
+claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
 claude plugin install verfy@verfy
 ```
 

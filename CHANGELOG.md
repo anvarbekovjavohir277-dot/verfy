@@ -1,11 +1,12 @@
 # Changelog
 
-What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and on the [GitHub releases page](https://github.com/anvarbekovjavohir277-dot/verfy/releases).
+What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
 ## 0.6.3 (2026-10-26)
 
 - **Security: the agent can no longer read Verfy's signing key or device token.** Up to 0.6.2 an agent could read `~/.verfy/key.json` (for example with `cat` or Claude Code's Read tool), and with it sign receipts of its own, or read the device token in `~/.verfy/team.json`. Now reading either file, listing, searching or copying `~/.verfy`, or naming the folder and one of those files in one command is denied (VFY-SELF-006), including `$HOME`, `%USERPROFILE%`, quoted, globbed and `cd`-then-read forms; archiving, copying or searching a folder that holds it, such as the home folder, or looking for files with those names needs approval (VFY-SELF-007). Both engines (Python and JavaScript) share the 26 new test cases. A program the agent writes and runs can still read the file: see [SECURITY_LIMITATIONS.md](docs/SECURITY_LIMITATIONS.md). If an agent may have read your key, create a new one yourself with `verfy init --force` (it starts a new receipt chain) and, with Verfy Cloud, revoke the device and enroll it again. Found while reviewing a contribution.
 - The end-to-end test also checks that the hook denies reading the signing key with `cat` and with the Read tool.
+- **The CLI's source repository is no longer public.** What you need is in [verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases): the standalone builds, the Claude Code plugin (`claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases`, then `claude plugin install verfy@verfy`), the security policy (report vulnerabilities and bypasses there), the advisories, the research and this changelog. The GitHub Action is replaced by two steps, `pip install "verfy==0.6.3"` and `verfy lock check`, with the same annotations and step summary.
 
 ## 0.6.2 (2026-10-26)
 
@@ -31,8 +32,8 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 - The hosted service has one name, Verfy Cloud: `verfy team` and `verfy sync` say so in their help. The commands are unchanged.
 - This repository is now the MIT CLI only; the website and the dashboard are developed separately as Verfy Cloud. The CLI is MIT and will stay MIT.
-- Verfy Advisories are open data in [`advisories/`](https://github.com/anvarbekovjavohir277-dot/verfy/tree/main/advisories): anyone can add a public, sourced advisory by pull request, checked by `node advisories/validate.mjs`.
-- Contributors sign the [CLA](https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/CLA.md) once, by commenting on their first pull request.
+- Verfy Advisories are open data in [`advisories/`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/tree/main/advisories): anyone can add a public, sourced advisory by pull request, checked by `node advisories/validate.mjs`.
+- Contributors sign the [CLA](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/CLA.md) once, by commenting on their first pull request.
 - There is no 0.5.4: that tag was never published, because the package metadata still said 0.5.3 and PyPI refused it. A test and the release workflow now check that both version numbers match.
 
 ## 0.5.3 (2026-10-24)
@@ -43,7 +44,7 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 ## 0.5.2 (2026-10-24)
 
-Scanner fixes, found by scanning the newest releases of 34 popular MCP servers ([the research](https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/docs/research/2026-10-mcp-tool-changes.md)). Version 0.5.1 raised 163 high or critical findings there, all false alarms; 0.5.2 raises none.
+Scanner fixes, found by scanning the newest releases of 34 popular MCP servers ([the research](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/research/2026-10-mcp-tool-changes.md)). Version 0.5.1 raised 163 high or critical findings there, all false alarms; 0.5.2 raises none.
 
 - A tool that mentions another tool on the same server is no longer flagged as tool shadowing.
 - A match right after a negation ("Do not include API keys") is skipped. Before, this hid tools from Context7, Apify and Sentry behind the gateway.

@@ -41,6 +41,8 @@ jobs:
 
   codeql:
     name: CodeQL
+    # code scanning needs a public repository (or GitHub Advanced Security)
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read

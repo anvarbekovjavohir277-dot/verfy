@@ -19,7 +19,7 @@ verfy hook install --write      # saves it (a backup is kept); --project for ./.
 Or install the Claude Code plugin, which adds the same hook to every session (use one or the other, not both):
 
 ```bash
-claude plugin marketplace add anvarbekovjavohir277-dot/verfy
+claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
 claude plugin install verfy@verfy
 ```
 
@@ -97,13 +97,12 @@ verfy lock check --update         # start the servers in .mcp.json, review every
 verfy lock check                  # 0 ok · 1 new/removed · 2 drift · 3 a server did not answer
 ```
 
-Commit `verfy.lock`; a pull request that changes a tool then fails until someone reviews the diff and runs `--update`. Inside GitHub Actions the command also writes annotations and a step summary. The repository root has an `action.yml` that installs this CLI and runs the check:
+Commit `verfy.lock`; a pull request that changes a tool then fails until someone reviews the diff and runs `--update`. Inside GitHub Actions the command also writes annotations and a step summary, so two steps are enough:
 
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- uses: anvarbekovjavohir277-dot/verfy@cli-v0.6.3
-  with: { config: .mcp.json, lock: verfy.lock }
+- run: pip install "verfy==0.6.3" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers are skipped.
