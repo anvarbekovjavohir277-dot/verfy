@@ -393,6 +393,48 @@ class ConfigScanTests(unittest.TestCase):
         self.assertIn("VFY-CFG-005", self.rules({"command": "docker", "args": ["run", "--privileged", "img"]}))
         self.assertIn("VFY-CFG-005", self.rules({"command": "docker", "args": ["run", "-v", "/:/host", "img"]}))
         self.assertEqual(self.rules({"command": "verfy", "args": ["proxy", "--name", "fs", "--", "npx", "-y", "pkg@1.2.3"]}), [])
+        for args, unpinned in [
+            (["run", "-A", "npm:@scope/server"], True),
+            (["run", "jsr:@scope/server"], True),
+            (["run", "npm:server"], True),
+            (["run", "npm:server@latest"], True),
+            (["run", "jsr:@scope/server@latest/cli"], True),
+            (["run", "--config", "deno.json", "npm:@scope/server"], True),
+            (["run", "-c", "deno.json", "npm:@scope/server"], True),
+            (["run", "--import-map", "imports.json", "jsr:@scope/server"], True),
+            (["run", "--import-map=imports.json", "jsr:@scope/server"], True),
+            (["run", "--location", "https://example.com", "npm:server"], True),
+            (["run", "--min-dep-age", "120", "npm:server"], True),
+            (["run", "--preload", "npm:setup@1.0.0", "npm:server"], True),
+            (["run", "--", "jsr:@scope/server"], True),
+            (["run", "-A", "npm:@scope/server@1.2.3"], False),
+            (["run", "jsr:@scope/server@1.2.3/cli"], False),
+            (["run", "npm:server@1.2.3", "npm:argument"], False),
+            (["run", "server.ts", "npm:argument"], False),
+            (["run", "https://example.com/server.ts", "jsr:@scope/argument"], False),
+            (["run", "-", "npm:argument"], False),
+            (["run", "--config", "deno.json", "server.ts", "npm:argument"], False),
+            (["run", "--config"], False),
+            (["run"], False),
+            (["eval", "npm:server"], False),
+        ]:
+            with self.subTest(deno_args=args):
+                expected = ["VFY-CFG-001", "VFY-CFG-006"] if unpinned else ["VFY-CFG-006"]
+                self.assertEqual(self.rules({"command": "deno", "args": args}), expected)
+
+    def test_deno_runner_wrappers_and_local_packages(self):
+        for spec in [
+            {"command": "deno.exe", "args": ["run", "npm:server"]},
+            {"command": "cmd", "args": ["/c", "deno", "run", "npm:server"]},
+            {"command": "bash", "args": ["-c", "deno run -A jsr:@scope/server"]},
+            {"command": "verfy", "args": ["proxy", "--name", "demo", "--", "deno", "run", "npm:server"]},
+        ]:
+            with self.subTest(spec=spec):
+                # Unlike npx, the explicit registry specifier does not name a locked local command.
+                findings = discover.check_server("demo", spec, local={"server"})
+                issue = [f for f in findings if f["rule"] == "VFY-CFG-001"]
+                self.assertEqual(len(issue), 1)
+                self.assertEqual((issue[0]["severity"], issue[0]["where"]), ("medium", "args"))
 
     def test_rules_seen_in_public_configs(self):
         # Windows and shell wrappers launch the inner command
@@ -429,6 +471,15 @@ class ConfigScanTests(unittest.TestCase):
         code, out, _ = run_cli(home, "scan", "--config", str(cfg), "--json")
         self.assertEqual(code, 2)
         self.assertEqual(json.loads(out)["servers"][0]["findings"][0]["rule"], "VFY-CFG-002")
+        cfg.write_text(json.dumps({"mcpServers": {
+            "unpinned": {"command": "deno", "args": ["run", "-A", "npm:@scope/server"]},
+            "pinned": {"command": "deno", "args": ["run", "jsr:@scope/server@1.2.3"]},
+        }}))
+        code, out, _ = run_cli(home, "scan", "--config", str(cfg), "--json")
+        self.assertEqual(code, 1)
+        rules = {s["server"]: [f["rule"] for f in s["findings"]] for s in json.loads(out)["servers"]}
+        self.assertIn("VFY-CFG-001", rules["unpinned"])
+        self.assertNotIn("VFY-CFG-001", rules["pinned"])
 
 
 class FakeServer:

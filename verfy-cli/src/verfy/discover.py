@@ -7,7 +7,7 @@ which starts each stdio server after you asked for it explicitly.
 
 Rules (all deterministic):
 
-VFY-CFG-001  medium  package runner (npx/uvx/bunx/pipx/pnpm dlx) without a pinned version
+VFY-CFG-001  medium  package runner (npx/uvx/bunx/pipx/pnpm dlx/deno run) without a pinned version
                      (not reported for npx when the package.json next to the config lists the package:
                      the lockfile pins it then)
 VFY-CFG-002  high    remote server over plain http:// (not localhost)
@@ -161,6 +161,22 @@ def _unwrap_shell(command: str, args: list[str]) -> tuple[str, list[str]]:
     return command, args
 
 
+def _deno_run_module(args: list[str]) -> str | None:
+    """The entry point before script arguments, skipping Deno options and their values."""
+    takes_value = {"--config", "-c", "--import-map", "--cert", "--location", "--seed", "--ext",
+                   "--v8-flags", "--preload", "--require", "--conditions", "--log-level", "-L",
+                   "--min-dep-age", "--node-modules-linker", "--watch-exclude"}
+    args_iter = iter(args)
+    for arg in args_iter:
+        if arg == "--":
+            return next(args_iter, None)
+        if arg in takes_value:
+            next(args_iter, None)
+        elif arg == "-" or not arg.startswith("-"):
+            return arg
+    return None
+
+
 def local_packages(config_path: str | Path | None) -> set[str]:
     """npm packages declared in the package.json next to a config (their versions come from the lockfile)."""
     if not config_path:
@@ -204,6 +220,16 @@ def check_server(name: str, spec: dict, local: set[str] | None = None) -> list[d
             else:
                 msg = f"`{base} {pkg}` downloads whatever version is newest at launch; pin a version."
             out.append(_f("VFY-CFG-001", "medium", msg, "args"))
+    if base == "deno" and args[:1] == ["run"]:
+        module = _deno_run_module(args[1:])
+        if module and module.startswith(("npm:", "jsr:")):
+            package = module.split(":", 1)[1]
+            # Check the package version, not an exported subpath such as @scope/server@latest/cli.
+            parts = package.split("/")
+            package = "/".join(parts[:2]) if package.startswith("@") else parts[0]
+            if package and not _pinned(package, "npm"):
+                msg = f"`deno run {module}` uses an unpinned package version; pin a version."
+                out.append(_f("VFY-CFG-001", "medium", msg, "args"))
     joined = " ".join([launch_command, *launch_args])
     if re.search(r"\b(?:curl|wget|iwr|Invoke-WebRequest)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b", joined) or re.search(r"\b(?:iex|Invoke-Expression)\b", joined, re.I):
         out.append(_f("VFY-CFG-004", "critical", "Launch command downloads a script and runs it in a shell.", "command"))
