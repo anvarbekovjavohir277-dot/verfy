@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from verfy import check, scan  # noqa: E402
+from verfy._util import scan_secrets  # noqa: E402
 from verfy.canonical import canonical  # noqa: E402
 
 POLICY = {"home": "/home/you", "workspace": "/home/you/project"}
@@ -158,6 +159,28 @@ CASES = [
     ("Write tool: replace verfy key", A("Write", {"file_path": "~/.verfy/key.json", "content": "{}"})),
 ]
 
+# Keep token prefixes separate from their synthetic payloads, including in the generated JSON.
+SECRET_CASES = [
+    ("hugging face", ["hf_", "a1" * 17]),
+    ("hugging face longer", ["hf_", "Ab2" * 16]),
+    ("gitlab", ["glpat-", "a1" * 10]),
+    ("gitlab ending in hyphen", ["glpat-", "Ab1_" * 4 + "Cd2-"]),
+    ("gitlab ending in underscore", ["glpat-", "Ab1-" * 4 + "Cd2_"]),
+    ("npm", ["npm_", "a1B2" * 9]),
+    ("short hugging face", ["hf_", "a1" * 16 + "a"]),
+    ("short gitlab", ["glpat-", "a1" * 9 + "a"]),
+    ("short npm", ["npm_", "a1" * 17 + "a"]),
+    ("long gitlab", ["glpat-", "a1" * 10 + "-"]),
+    ("long npm", ["npm_", "a1" * 18 + "a"]),
+    ("invalid hugging face alphabet", ["hf_", "a1" * 8 + "_" + "a1" * 9]),
+    ("hugging face placeholder", ["hf_", "example" + "a1" * 14]),
+    ("gitlab placeholder", ["glpat-", "example" + "a" * 13]),
+    ("npm placeholder", ["npm_", "example" + "a" * 29]),
+    ("embedded hugging face prefix", ["prefixhf_", "a1" * 17]),
+    ("embedded gitlab prefix", ["prefixglpat-", "a1" * 10]),
+    ("embedded npm prefix", ["prefixnpm_", "a1B2" * 9]),
+]
+
 WIN = {"home": "C:\\Users\\you", "workspace": "C:\\Users\\you\\project"}
 
 POLICY_CASES = [
@@ -201,6 +224,9 @@ def main() -> None:
     fx.mkdir(parents=True, exist_ok=True)
     (fx / "precheck.json").write_text(json.dumps({"policy": POLICY, "cases": out}, indent=1, ensure_ascii=False) + "\n", "utf-8")
 
+    secrets = [{"name": name, "parts": parts, "expect": scan_secrets("".join(parts))} for name, parts in SECRET_CASES]
+    (fx / "secrets.json").write_text(json.dumps(secrets, indent=1) + "\n", "utf-8")
+
     scans = []
     for f in sorted((ROOT / "examples" / "tools").glob("*.json")):
         data = json.loads(f.read_text("utf-8"))
@@ -221,7 +247,7 @@ def main() -> None:
     for cse in canon:
         cse["canonical"] = canonical(cse["value"])
     (fx / "canonical.json").write_text(json.dumps(canon, indent=1, ensure_ascii=False) + "\n", "utf-8")
-    print(f"{len(out)} precheck cases, {len(scans)} scan cases, {len(canon)} canonical cases")
+    print(f"{len(out)} precheck cases, {len(scans)} scan cases, {len(canon)} canonical cases, {len(secrets)} secret cases")
 
 
 if __name__ == "__main__":

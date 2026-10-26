@@ -22,6 +22,27 @@
    "high"
   ],
   [
+   "huggingface-token",
+   "Hugging Face token",
+   "\\bhf_[A-Za-z0-9]{34,}\\b",
+   "",
+   "high"
+  ],
+  [
+   "gitlab-token",
+   "GitLab personal access token",
+   "\\bglpat-[A-Za-z0-9_-]{20}(?![A-Za-z0-9_-])",
+   "",
+   "high"
+  ],
+  [
+   "npm-token",
+   "npm token",
+   "\\bnpm_[A-Za-z0-9]{36}\\b",
+   "",
+   "high"
+  ],
+  [
    "anthropic-key",
    "Anthropic API key",
    "\\bsk-ant-[A-Za-z0-9_\\-]{20,}",

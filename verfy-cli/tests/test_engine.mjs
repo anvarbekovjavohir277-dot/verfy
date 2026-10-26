@@ -47,6 +47,13 @@ async function main() {
   // canonical JSON
   for (const c of JSON.parse(fs.readFileSync(path.join(FX, "canonical.json"), "utf8"))) expect("canonical", K.canonical(c.value), c.canonical);
 
+  // Secrets are assembled only at test time, so fixtures do not contain complete token-shaped strings.
+  for (const c of readJson(path.join(FX, "secrets.json"))) {
+    const text = c.parts.join("");
+    expect("secrets: " + c.name, K.scanSecrets(text), c.expect);
+    expect("redaction: " + c.name, K.redactValue(text), c.expect.length ? "[REDACTED:" + c.expect[0].id + "]" : text);
+  }
+
   // pre-check
   const pre = JSON.parse(fs.readFileSync(path.join(FX, "precheck.json"), "utf8"));
   for (const c of pre.cases) {
