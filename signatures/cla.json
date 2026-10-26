@@ -1,3 +1,12 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "BryanOnKeys",
+      "id": 201409645,
+      "comment_id": 6409011776,
+      "created_at": "2026-10-26T05:34:06Z",
+      "repoId": 1419491814,
+      "pullRequestNo": 18
+    }
+  ]
 }
