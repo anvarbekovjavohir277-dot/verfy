@@ -9,11 +9,13 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKIP_DIRS = new Set(["node_modules", ".git", ".next", "coverage", ".venv", "venv", "__pycache__", "dist", "build"]);
 // Built from parts so this file does not match itself.
-const OLD = ["at" + "las", "k" + "afil", "agent" + "cve", "kaf" + "-id", "kf" + "-scan", "kf" + "-sh-", "kf" + "_"];
+const OLD = ["at" + "las", "at" + "ls", "k" + "afil", "agent" + "cve", "kaf" + "-id", "kf" + "-scan", "kf" + "-sh-", "kf" + "_"];
 const RE = new RegExp(OLD.map((s) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")).join("|"), "i");
 
-// real words that contain an old name (the Atlassian MCP server in research/servers.json)
-const ALLOWED = new RegExp("atl" + "assian", "gi");
+// real words that contain an old name (the Atlassian MCP server in research/servers.json), the
+// advisory ids from before the rename, which stay valid as aliases (for example an old 2025-0001 id),
+// and the name of a hosted-service environment variable that check-secrets.mjs looks for
+const ALLOWED = new RegExp("atl" + "assian|" + "at" + "ls-(?=[0-9`])|" + "at" + "ls_ip_hash_salt", "gi");
 
 const hits = [];
 function walk(dir) {

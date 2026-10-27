@@ -6,7 +6,8 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 - **Security: the agent can no longer read Verfy's signing key or device token.** Up to 0.6.2 an agent could read `~/.verfy/key.json` (for example with `cat` or Claude Code's Read tool), and with it sign receipts of its own, or read the device token in `~/.verfy/team.json`. Now reading either file, listing, searching or copying `~/.verfy`, or naming the folder and one of those files in one command is denied (VFY-SELF-006), including `$HOME`, `%USERPROFILE%`, quoted, globbed and `cd`-then-read forms; archiving, copying or searching a folder that holds it, such as the home folder, or looking for files with those names needs approval (VFY-SELF-007). Both engines (Python and JavaScript) share the 26 new test cases. A program the agent writes and runs can still read the file: see [SECURITY_LIMITATIONS.md](docs/SECURITY_LIMITATIONS.md). If an agent may have read your key, create a new one yourself with `verfy init --force` (it starts a new receipt chain) and, with Verfy Cloud, revoke the device and enroll it again. Found while reviewing a contribution.
 - The end-to-end test also checks that the hook denies reading the signing key with `cat` and with the Read tool.
-- **The CLI's source repository is no longer public.** What you need is in [verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases): the standalone builds, the Claude Code plugin (`claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases`, then `claude plugin install verfy@verfy`), the security policy (report vulnerabilities and bypasses there), the advisories, the research and this changelog. The GitHub Action is replaced by two steps, `pip install "verfy==0.6.3"` and `verfy lock check`, with the same annotations and step summary.
+- Website (27 October): Verfy Advisories have `VERFY-YYYY-NNNN` ids. The old ids (such as ATLS-2025-0001) stay in `aliases`, and links to them lead to the new pages.
+- **[verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases) is the home for installing Verfy**: the standalone builds, the Claude Code plugin (`claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases`, then `claude plugin install verfy@verfy`), the security policy (report vulnerabilities and bypasses there), the advisories, the research and this changelog. The source stays here, under the MIT license. The GitHub Action is replaced by two steps, `pip install "verfy==0.6.3"` and `verfy lock check`, with the same annotations and step summary.
 
 ## 0.6.2 (2026-10-26)
 
@@ -85,5 +86,5 @@ Fixes found while scanning public `.mcp.json` files and recording the demo video
 ## Before PyPI (2026-10-14 to 2026-10-20)
 
 - 2026-10-18: the website leads with Verfy Lock, with a rug-pull demo you can run in the browser.
-- 2026-10-15: renamed from Atls to Verfy; Google and GitHub sign-in.
+- 2026-10-15: the project got its name, Verfy; Google and GitHub sign-in.
 - 2026-10-14: first version of the guard, scanner, lock, signed receipts and the Team web app.

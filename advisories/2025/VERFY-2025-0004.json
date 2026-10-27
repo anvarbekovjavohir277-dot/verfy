@@ -1,7 +1,7 @@
 {
   "schema_version": "1.6.0",
-  "id": "ATLS-2025-0004",
-  "aliases": ["CVE-2025-53110"],
+  "id": "VERFY-2025-0004",
+  "aliases": ["CVE-2025-53110", "ATLS-2025-0004"],
   "summary": "MCP filesystem server: path prefix collision bypasses the allowed-directory check",
   "details": "In @modelcontextprotocol/server-filesystem before 0.6.4 (or 2025.7.01), the allowed-directory check compared path prefixes as strings, so a path such as /data/allowed_evil passed a check for /data/allowed. This let callers reach files outside the configured directories. Upgrade to 0.6.4 / 2025.7.01 or later.",
   "severity_label": "high",
@@ -16,6 +16,6 @@
     { "type": "WEB", "url": "https://v2.cvefeed.io/vuln/detail/CVE-2025-53110" }
   ],
   "published": "2026-10-11T00:00:00Z",
-  "modified": "2026-10-11T00:00:00Z",
-  "database_specific": { "atls_review": "unreviewed", "fixed_also_in": "2025.7.01", "source": "Public CVE record; not independently reproduced by Atls." }
+  "modified": "2026-10-27T00:00:00Z",
+  "database_specific": { "verfy_review": "unreviewed", "fixed_also_in": "2025.7.01", "source": "Public CVE record; not independently reproduced by Verfy." }
 }

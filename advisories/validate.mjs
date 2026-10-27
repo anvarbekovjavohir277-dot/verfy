@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ID = /^ATLS-\d{4}-\d{4,}$/;
+const ID = /^VERFY-\d{4}-\d{4,}$/;
 const SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 
 function files(dir) {
@@ -28,7 +28,7 @@ export function load(dir = HERE) {
       problems.push(`${rel}: not valid JSON (${e.message})`);
       continue;
     }
-    if (!ID.test(a.id ?? "")) problems.push(`${rel}: id must look like ATLS-2025-0001`);
+    if (!ID.test(a.id ?? "")) problems.push(`${rel}: id must look like VERFY-2025-0001`);
     if (path.basename(rel, ".json") !== a.id) problems.push(`${rel}: file name must equal the id`);
     if (typeof a.summary !== "string" || a.summary.length < 5 || a.summary.length > 300) problems.push(`${rel}: summary must be 5-300 characters`);
     if (typeof a.details !== "string" || !a.details.trim()) problems.push(`${rel}: details are required`);
@@ -36,7 +36,7 @@ export function load(dir = HERE) {
     if (!Array.isArray(a.affected) || !a.affected.length || !a.affected.every((x) => x?.package?.ecosystem && x?.package?.name)) problems.push(`${rel}: affected[].package {ecosystem, name} is required`);
     if (!Array.isArray(a.references) || !a.references.length || !a.references.every((r) => typeof r.url === "string" && r.url.startsWith("https://"))) problems.push(`${rel}: at least one https reference is required`);
     for (const k of ["published", "modified"]) if (Number.isNaN(Date.parse(a[k]))) problems.push(`${rel}: ${k} must be an RFC 3339 timestamp`);
-    if (!["unreviewed", "reviewed"].includes(a.database_specific?.atls_review)) problems.push(`${rel}: database_specific.atls_review must be unreviewed or reviewed`);
+    if (!["unreviewed", "reviewed"].includes(a.database_specific?.verfy_review)) problems.push(`${rel}: database_specific.verfy_review must be unreviewed or reviewed`);
     out.push(a);
   }
   const ids = out.map((a) => a.id);

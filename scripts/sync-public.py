@@ -1,4 +1,4 @@
-"""Copy the public parts of this private repository into verfy-releases, the public one.
+"""Copy what users need into verfy-releases, the repository people install Verfy from.
 
 The CLI's source stays here. verfy-releases carries what people need without it: the Claude Code plugin
 marketplace, the security policy and its limits, the CLA, the changelog, the demo video, the research

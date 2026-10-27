@@ -1,5 +1,6 @@
 # Verfy
 
+[![CI](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml/badge.svg)](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/verfy)](https://pypi.org/project/verfy/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 

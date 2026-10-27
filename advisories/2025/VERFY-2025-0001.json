@@ -1,7 +1,7 @@
 {
   "schema_version": "1.6.0",
-  "id": "ATLS-2025-0001",
-  "aliases": ["CVE-2025-6514"],
+  "id": "VERFY-2025-0001",
+  "aliases": ["CVE-2025-6514", "ATLS-2025-0001"],
   "summary": "mcp-remote: OS command injection from a malicious MCP server's OAuth authorization_endpoint",
   "details": "mcp-remote passed the authorization_endpoint URL returned by a remote MCP server during the OAuth flow to a function that opens URLs on the local machine. A malicious or compromised MCP server could craft that value so that connecting to it ran arbitrary OS commands on the developer's machine. Upgrade mcp-remote to 0.1.16 or later and only connect to MCP servers you trust.",
   "severity_label": "critical",
@@ -16,6 +16,6 @@
     { "type": "WEB", "url": "https://www.wiz.io/vulnerability-database/cve/cve-2025-6514" }
   ],
   "published": "2026-10-11T00:00:00Z",
-  "modified": "2026-10-11T00:00:00Z",
-  "database_specific": { "atls_review": "unreviewed", "source": "Public CVE record; not independently reproduced by Atls." }
+  "modified": "2026-10-27T00:00:00Z",
+  "database_specific": { "verfy_review": "unreviewed", "source": "Public CVE record; not independently reproduced by Verfy." }
 }

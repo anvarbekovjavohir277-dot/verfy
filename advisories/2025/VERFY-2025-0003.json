@@ -1,7 +1,7 @@
 {
   "schema_version": "1.6.0",
-  "id": "ATLS-2025-0003",
-  "aliases": ["CVE-2025-53109"],
+  "id": "VERFY-2025-0003",
+  "aliases": ["CVE-2025-53109", "ATLS-2025-0003"],
   "summary": "MCP filesystem server: symlinks inside an allowed directory escape the allowed-directory boundary",
   "details": "In @modelcontextprotocol/server-filesystem before 0.6.4 (or 2025.7.01 in the date-based versioning), flawed error handling around symlink resolution let a symlink placed inside an allowed directory point to files outside it, bypassing the server's directory containment. An agent or prompt that can create files could use this to read or write files the server was not meant to expose. Upgrade to 0.6.4 / 2025.7.01 or later.",
   "severity_label": "high",
@@ -16,6 +16,6 @@
     { "type": "ADVISORY", "url": "https://advisories.gitlab.com/pkg/npm/@modelcontextprotocol/server-filesystem/CVE-2025-53109/" }
   ],
   "published": "2026-10-11T00:00:00Z",
-  "modified": "2026-10-11T00:00:00Z",
-  "database_specific": { "atls_review": "unreviewed", "fixed_also_in": "2025.7.01", "source": "Public CVE record; not independently reproduced by Atls." }
+  "modified": "2026-10-27T00:00:00Z",
+  "database_specific": { "verfy_review": "unreviewed", "fixed_also_in": "2025.7.01", "source": "Public CVE record; not independently reproduced by Verfy." }
 }

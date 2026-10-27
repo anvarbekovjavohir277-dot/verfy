@@ -26,6 +26,7 @@ dependencies = []
 Homepage = "https://verfy-tech.vercel.app"
 Documentation = "https://verfy-tech.vercel.app/docs"
 Changelog = "https://verfy-tech.vercel.app/changelog"
+Source = "https://github.com/anvarbekovjavohir277-dot/verfy"
 Downloads = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases"
 Issues = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues"
 Security = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md"
