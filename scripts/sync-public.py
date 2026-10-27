@@ -1,7 +1,7 @@
 """Copy what users need into verfy-releases, the repository people install Verfy from.
 
 The CLI's source stays here. verfy-releases carries what people need without it: the Claude Code plugin
-marketplace, the security policy and its limits, the CLA, the changelog, the demo video, the research
+marketplace, the security policy and its limits, the trademark policy, the CLA, the changelog, the demo video, the research
 report and its scripts, the advisories (open data) and the CI example. Run it after changing any of
 them, then review and commit verfy-releases.
 
@@ -20,6 +20,7 @@ MIRROR = {
     ".claude-plugin/marketplace.json": ".claude-plugin/marketplace.json",
     "plugins/verfy": "plugins/verfy",
     "SECURITY.md": "SECURITY.md",
+    "TRADEMARKS.md": "TRADEMARKS.md",
     "CLA.md": "CLA.md",
     "CHANGELOG.md": "CHANGELOG.md",
     "docs/SECURITY_LIMITATIONS.md": "docs/SECURITY_LIMITATIONS.md",
