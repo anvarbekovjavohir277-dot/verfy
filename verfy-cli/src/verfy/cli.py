@@ -845,6 +845,7 @@ def cmd_lock_check(args) -> int:
             _print_file_rows(file_rows, lock["files"], files_now, show_ok=False)
         for e in errors:
             print(f"  {c('error  ', '31;1')} {e}")
+    gh = (lambda kind, msg: None) if args.json else _gh  # annotations go to stdout, which --json keeps for the JSON alone
     for r in rows:
         if r["status"] == "drift":
             old = lock["servers"][r["server"]]["tools"][r["tool"]]["definition"]
@@ -853,18 +854,18 @@ def cmd_lock_check(args) -> int:
                 print(c(f"{r['server']}/{r['tool']}", "1"))
                 print_explain(old, new)
                 print(locks.diff(old, new, f"{r['server']}/{r['tool']}"))
-            _gh("error", f"{r['server']}/{r['tool']} changed since it was locked (possible rug pull), risk {r['explain']['risk']}: {r['explain']['summary']}. Locked {r['locked']}, now {r['current']}.")
+            gh("error", f"{r['server']}/{r['tool']} changed since it was locked (possible rug pull), risk {r['explain']['risk']}: {r['explain']['summary']}. Locked {r['locked']}, now {r['current']}.")
         elif r["status"] == "new":
-            _gh("error", f"{r['server']}/{r['tool']} is not in {path}. Review it, then run `verfy lock check --update` and commit the lock.")
+            gh("error", f"{r['server']}/{r['tool']} is not in {path}. Review it, then run `verfy lock check --update` and commit the lock.")
         elif r["status"] == "removed":
-            _gh("warning", f"{r['server']}/{r['tool']} is in {path} but the server no longer serves it.")
+            gh("warning", f"{r['server']}/{r['tool']} is in {path} but the server no longer serves it.")
     for e in errors:
-        _gh("error", f"could not read tools from {e}")
+        gh("error", f"could not read tools from {e}")
     for r in file_rows:
         if r["status"] == "changed":
-            _gh("error", f"{r['path']} changed since it was locked, risk {r['explain']['risk']}: {r['explain']['summary']}. Review the diff, then run `verfy lock files --update` and commit the lock.")
+            gh("error", f"{r['path']} changed since it was locked, risk {r['explain']['risk']}: {r['explain']['summary']}. Review the diff, then run `verfy lock files --update` and commit the lock.")
         elif r["status"] in ("new", "removed"):
-            _gh("warning", f"agent file {r['path']} is {r['status']} compared with {path}.")
+            gh("warning", f"agent file {r['path']} is {r['status']} compared with {path}.")
     _step_summary(rows + [{"server": "(file)", "tool": r["path"], "status": "drift" if r["status"] == "changed" else r["status"], "locked": r["locked"], "current": r["current"], "explain": r.get("explain")} for r in file_rows if r["status"] != "ok"], errors, path)
     if any(r["status"] == "drift" for r in rows) or any(r["status"] == "changed" for r in file_rows):
         return 2
