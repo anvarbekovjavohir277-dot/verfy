@@ -7,13 +7,13 @@ branding:
 
 inputs:
   config:
-    description: MCP config whose stdio servers are started and checked.
+    description: MCP config whose servers are checked. Stdio servers are started; remote servers are called with the headers in the config, where ${VAR} comes from the step's env.
     default: .mcp.json
   lock:
     description: The committed lock file to compare with.
     default: verfy.lock
   servers:
-    description: Optional space-separated server names to check (default all stdio servers in the config).
+    description: Optional space-separated server names to check (default all servers in the config).
     default: ""
 
 runs:

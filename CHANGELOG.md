@@ -2,6 +2,12 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.7.0 (2026-10-28)
+
+- **Remote MCP servers.** `verfy lock check` and `verfy scan --live` now read the tools of remote servers (a `url` in the config) over Streamable HTTP instead of skipping them, so a CI check covers hosted servers too. Headers come from the config: `headers` (Claude Code, Cursor, VS Code and others) or Codex CLI's `http_headers`, `env_http_headers` and `bearer_token_env_var`, with `${VAR}` and `${VAR:-default}` filled in from the environment, so a key can come from a CI secret. A missing variable fails the check and names the variable, never a value. Verfy does not follow redirects, so a key only goes to the address in the config. Servers that only speak the older SSE transport are reported, not supported yet. The MCP gateway still runs in front of stdio servers only.
+- Tested with a local fake server (sessions, server-sent events, pages of tools, a refused key, a redirect, a missing variable) and by hand against two public remote servers, DeepWiki and Context7.
+- The GitHub Action works again now that the source repository is public: `uses: anvarbekovjavohir277-dot/verfy@cli-v0.7.0`. It checks remote servers too.
+
 ## 0.6.3 (2026-10-26)
 
 - **Security: the agent can no longer read Verfy's signing key or device token.** Up to 0.6.2 an agent could read `~/.verfy/key.json` (for example with `cat` or Claude Code's Read tool), and with it sign receipts of its own, or read the device token in `~/.verfy/team.json`. Now reading either file, listing, searching or copying `~/.verfy`, or naming the folder and one of those files in one command is denied (VFY-SELF-006), including `$HOME`, `%USERPROFILE%`, quoted, globbed and `cd`-then-read forms; archiving, copying or searching a folder that holds it, such as the home folder, or looking for files with those names needs approval (VFY-SELF-007). Both engines (Python and JavaScript) share the 26 new test cases. A program the agent writes and runs can still read the file: see [SECURITY_LIMITATIONS.md](docs/SECURITY_LIMITATIONS.md). If an agent may have read your key, create a new one yourself with `verfy init --force` (it starts a new receipt chain) and, with Verfy Cloud, revoke the device and enroll it again. Found while reviewing a contribution.

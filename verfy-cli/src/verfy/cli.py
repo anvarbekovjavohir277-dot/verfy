@@ -21,7 +21,7 @@ from . import lock as locks
 from . import team as teamlib
 from . import update as updates
 from .gateway import Gateway, verfy_home
-from .mcp_client import MCPError, list_tools
+from .mcp_client import MCPError, expand, list_tools, list_tools_http
 from .policy import DEFAULT_POLICY, TEMPLATES, load_policy, policy_digest
 from .precheck import check
 from .receipts import Key, Ledger, key_id, public_from, read_ledger, receipt_hash, verify_ledger
@@ -273,17 +273,47 @@ def _stdio_launch(spec: dict) -> tuple[list[str], dict] | None:
     return cmd, env
 
 
+def _remote_target(spec: dict) -> tuple[str, dict[str, str]]:
+    """The address and headers of a remote server, with ${VAR} filled in from the environment.
+    `headers` is what most clients use; `http_headers`, `env_http_headers` and `bearer_token_env_var` are Codex CLI's."""
+    env = os.environ
+    url = expand(cfgscan.server_url(spec) or "", env, "the url")
+    headers: dict[str, str] = {}
+    for key in ("headers", "http_headers"):
+        for k, v in (spec.get(key) or {}).items():
+            headers[str(k)] = expand(str(v), env, f"header {k}")
+    for k, var in (spec.get("env_http_headers") or {}).items():
+        if str(var) not in env:
+            raise MCPError(f"header {k} reads {var}, which is not set")
+        headers[str(k)] = env[str(var)]
+    if spec.get("bearer_token_env_var"):
+        var = str(spec["bearer_token_env_var"])
+        if var not in env:
+            raise MCPError(f"bearer_token_env_var names {var}, which is not set")
+        headers["Authorization"] = f"Bearer {env[var]}"
+    return url, headers
+
+
+def _live_tools(spec: dict, timeout: float) -> list[dict] | None:
+    """Ask one configured server for its tools: start a stdio server, or call a remote one. None if the entry has neither."""
+    launch = _stdio_launch(spec)
+    if launch is not None:
+        return list_tools(launch[0], timeout=timeout, env=launch[1])["tools"]
+    if cfgscan.server_url(spec):
+        return list_tools_http(*_remote_target(spec), timeout=timeout)["tools"]
+    return None
+
+
 def _live_reports(found: list[dict], args) -> list[dict]:
     reports = []
     for cfg in found:
         for name, spec in cfg["servers"].items():
-            launch = _stdio_launch(spec)
-            if launch is None:
-                print(f"[verfy] skipping `{name}` (remote server; save its tools/list answer and scan the file)", file=sys.stderr)
-                continue
-            cmd, env = launch
             try:
-                live = list_tools(cmd, timeout=args.timeout, env=env)
+                tools = _live_tools(spec, args.timeout)
+                if tools is None:
+                    print(f"[verfy] skipping `{name}`: no command or url in its config", file=sys.stderr)
+                    continue
+                live = {"tools": tools}
             except MCPError as e:
                 print(f"[verfy] {name}: {e}", file=sys.stderr)
                 continue
@@ -311,7 +341,7 @@ def cmd_scan(args) -> int:
                 return 2 if worst >= cfgscan.SEVERITY_RANK["high"] else (1 if worst >= cfgscan.SEVERITY_RANK["medium"] else 0)
             if not args.json:
                 print_config_scan(static)
-                print(c("\n--live: starting each stdio server to read its tools (you asked for this).", "2"))
+                print(c("\n--live: starting each stdio server and asking each remote one for its tools (you asked for this).", "2"))
             reports = _live_reports(found, args)
         elif args.cmd:
             live = list_tools(args.cmd, timeout=args.timeout)
@@ -757,7 +787,7 @@ def _step_summary(rows: list[dict], errors: list[str], path: Path) -> None:
 
 
 def cmd_lock_check(args) -> int:
-    """Start every stdio server in an MCP config, read its tools and compare them with verfy.lock (for CI)."""
+    """Read the tools of every server in an MCP config (stdio servers are started, remote ones asked over HTTP) and compare them with verfy.lock (for CI)."""
     cfg = Path(args.config)
     if not cfg.is_file():
         print(f"verfy lock check: no such config file: {cfg}", file=sys.stderr)
@@ -776,15 +806,15 @@ def cmd_lock_check(args) -> int:
     for name, spec in sorted(servers.items()):
         if wanted and name not in wanted:
             continue
-        launch = _stdio_launch(spec)
-        if launch is None:
-            print(f"[verfy] skipping `{name}`: remote servers are not started by `lock check`", file=sys.stderr)
-            continue
         try:
-            current[name] = list_tools(launch[0], timeout=args.timeout, env=launch[1])["tools"]
+            tools = _live_tools(spec, args.timeout)
         except MCPError as e:
             errors.append(f"`{name}`: {e}")
             continue
+        if tools is None:
+            print(f"[verfy] skipping `{name}`: no command or url in its config", file=sys.stderr)
+            continue
+        current[name] = tools
         rows += [{"server": name, **r} for r in locks.compare(lock, name, current[name])]
     gone = [s for s in lock["servers"] if s not in servers and (not wanted or s in wanted)]
     for name in gone:
@@ -1163,7 +1193,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file", nargs="?", help="tools/list JSON file, or - for stdin")
     p.add_argument("--config", help="check how the servers in an MCP config are launched (static)")
     p.add_argument("--discover", action="store_true", help="find Claude Code, Cursor and Claude Desktop MCP configs and check them (static)")
-    p.add_argument("--live", action="store_true", help="with --config/--discover: also start each stdio server and scan its tools")
+    p.add_argument("--live", action="store_true", help="with --config/--discover: also read each server's tools (stdio servers are started, remote ones asked over HTTP) and scan them")
     p.add_argument("--server", help="name to show for the server")
     p.add_argument("--lock", help="verfy.lock to compare tool definitions with (drift shows as VFY-SCAN-014)")
     p.add_argument("--fail-under", metavar="GRADE", help="exit 1 if any server grades worse than this (A-F)")
@@ -1259,7 +1289,7 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--server", required=True)
     x.add_argument("--lock")
     x.set_defaults(fn=cmd_lock_add)
-    x = lk.add_parser("check", help="start the servers in an MCP config and compare their tools with verfy.lock (for CI)")
+    x = lk.add_parser("check", help="read the tools of the servers in an MCP config (stdio and remote) and compare them with verfy.lock (for CI)")
     x.add_argument("--config", default=".mcp.json", help="MCP config with the servers to check (default .mcp.json)")
     x.add_argument("--lock", default="verfy.lock", help="lock file to compare with (default ./verfy.lock)")
     x.add_argument("--server", action="append", help="only check this server (repeatable)")

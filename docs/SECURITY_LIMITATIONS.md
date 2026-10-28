@@ -18,13 +18,13 @@ Verfy reduces risk; it does not remove it. These are the limits we know about. N
 ## The scanner and locks
 
 - A clean scan is not a security certification. The scanner finds known warning signs in tool definitions and configs.
-- `verfy scan --discover` is static and does not start servers. `--live` starts each configured stdio server to list its tools; only use it for servers you would run anyway.
+- `verfy scan --discover` is static and does not start servers. `--live` starts each configured stdio server and calls each remote server (with the headers in its config) to list their tools; only use it for servers you would run anyway.
 - The first time a server is seen, its tools are locked as they are (trust on first use).
 - A lock proves a definition did not change since it was approved, not that it is safe.
 - The risk Verfy gives a change (low, medium, high) comes from deterministic patterns: new sentences that order the model to move data, new links, hidden-instruction patterns and schema changes. A cleverly worded instruction can still be rated low, so read the diff before you approve.
 - `verfy lock files` pins the instruction files, skills, commands, hook settings and plugins it knows about (listed in the CLI README). An agent can also read files Verfy does not list; those are not pinned.
 - `verfy import` follows the documented JSON formats of Snyk Agent Scan and Cisco MCP Scanner. Those formats may change between their releases, and the gateway matches imported findings by server and tool name only.
-- `verfy lock check` (and the GitHub Action) starts every stdio server command in the given config, like `--live`. In CI that runs those packages on the runner with whatever secrets you pass them; pin versions and keep the job's permissions read-only. A server can serve different definitions to different clients or at different times, so a passing CI check does not replace the lock on each developer's machine.
+- `verfy lock check` (and the GitHub Action) starts every stdio server command in the given config, like `--live`, and calls every remote server with the headers in the config. In CI that runs those packages on the runner with whatever secrets you pass them; pin versions and keep the job's permissions read-only. The MCP gateway runs in front of stdio servers only: a remote server's tools are checked by `lock check`, not hidden or blocked while the agent runs. A server can serve different definitions to different clients or at different times, so a passing CI check does not replace the lock on each developer's machine.
 
 ## Updates
 

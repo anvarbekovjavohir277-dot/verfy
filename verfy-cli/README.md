@@ -102,10 +102,16 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.6.3" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.7.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
-`lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers are skipped.
+`lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
+
+```json
+{ "mcpServers": { "docs": { "type": "http", "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer ${MCP_TOKEN}" } } } }
+```
+
+Verfy does not follow redirects, so a key only goes to the address in the config, and it never prints header values. Servers that only speak the older SSE transport are not supported yet.
 
 ## Check and verify
 
