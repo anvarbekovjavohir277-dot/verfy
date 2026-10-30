@@ -1,6 +1,6 @@
 # Trademarks
 
-"Verfy", the Verfy logo (the shield with a V cut into its top) and "Verfy Cloud" are trademarks of Javohir, the owner of the Verfy project (GitHub: [anvarbekovjavohir277-dot](https://github.com/anvarbekovjavohir277-dot)). They are not registered yet.
+"Verfy", the Verfy logo (the shield with a V cut into its top) and "Verfy Cloud" are trademarks of the owner of the Verfy project (GitHub: [anvarbekovjavohir277-dot](https://github.com/anvarbekovjavohir277-dot)). They are not registered yet.
 
 The MIT license covers the code in this repository. It does not give anyone the right to use these names or the logo.
 

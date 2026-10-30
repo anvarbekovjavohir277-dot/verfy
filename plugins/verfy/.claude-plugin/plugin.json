@@ -4,7 +4,7 @@
   "version": "0.7.0",
   "description": "Checks every Claude Code tool call against deterministic allow/ask/deny rules (no model decides), writes an Ed25519-signed receipt, and helps you review locked MCP tools and instruction files. Needs the verfy CLI: pip install verfy.",
   "author": {
-    "name": "Javohir",
+    "name": "Verfy",
     "url": "https://github.com/anvarbekovjavohir277-dot"
   },
   "homepage": "https://verfy-tech.vercel.app/docs",

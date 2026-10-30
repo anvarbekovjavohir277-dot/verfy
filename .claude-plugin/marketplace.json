@@ -2,7 +2,7 @@
   "name": "verfy",
   "description": "Verfy for Claude Code: deterministic checks on every tool call, signed receipts, locked MCP tools and instruction files.",
   "owner": {
-    "name": "Javohir"
+    "name": "Verfy"
   },
   "plugins": [
     {

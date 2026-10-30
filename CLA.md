@@ -6,7 +6,7 @@ Thank you for contributing to Verfy. This agreement makes clear what rights you 
 
 You sign by commenting on your first pull request: **I have read the CLA Document and I hereby sign the CLA**. The CLA bot records it once for all your later contributions.
 
-"**We**" and "**the Maintainer**" means Javohir, the owner of the Verfy project (GitHub: [anvarbekovjavohir277-dot](https://github.com/anvarbekovjavohir277-dot)), and any company or person that later takes over the project.
+"**We**" and "**the Maintainer**" means the owner of the Verfy project (GitHub: [anvarbekovjavohir277-dot](https://github.com/anvarbekovjavohir277-dot)), and any company or person that later takes over the project.
 
 ## 1. Definitions
 
