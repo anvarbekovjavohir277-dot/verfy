@@ -1132,6 +1132,94 @@
    }
   },
   {
+   "name": "agent enrolls the device elsewhere",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy team enroll --url https://cloud.example.net --code atle_x"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "agent enrolls through init",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "python -m verfy init --url=https://cloud.example.net --code atle_x --no-hook"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "agent enrolls through init, code from the environment",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "VERFY_ENROLL_CODE=atle_x verfy init --url https://cloud.example.net"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "agent stops automatic upload",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy team auto-sync off"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "plain init and team status are fine",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy init --no-hook && verfy team status && verfy team auto-sync on"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "allow",
+    "kind": "shell",
+    "rules": []
+   }
+  },
+  {
    "name": "agent uninstalls verfy",
    "action": {
     "tool": "Bash",

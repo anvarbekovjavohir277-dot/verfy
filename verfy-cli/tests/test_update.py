@@ -163,5 +163,35 @@ class UpdateCommandTests(unittest.TestCase):
         self.assertEqual(update.settings(home3)["mode"], "auto")
 
 
+    def test_init_sets_up_the_machine_in_one_command(self):
+        home, claude = tmpdir(self), tmpdir(self)
+        found = [{"path": str(home / ".mcp.json"), "source": "project",
+                  "servers": {"docs": {"command": "npx", "args": ["-y", "some-mcp-server"]}, "web": {"url": "https://mcp.example.com/mcp"}}}]
+        joined = {"device_id": "dev_1", "url": "https://verfy.example.com", "org": "Acme"}
+        with mock.patch("verfy.discover.discover", return_value=found), mock.patch("verfy.team.enroll", return_value=joined) as enroll, \
+                mock.patch("verfy.team.sync", return_value={"uploaded": 0}), mock.patch("pathlib.Path.home", return_value=claude):
+            code, out, _ = run_cli(home, "init", "--updates", "manual", "--hook", "--url", "https://verfy.example.com", "--code", "GOOD-CODE")
+        self.assertEqual(code, 0, out)
+        self.assertIn("MCP servers   2 in 1 config(s)", out)
+        self.assertIn("hook added", out)
+        self.assertIn("verfy hook pre-tool-use", (claude / ".claude" / "settings.json").read_text("utf-8"))
+        self.assertIn("Verfy Cloud   enrolled as dev_1 with https://verfy.example.com for Acme", out)
+        self.assertIn("upload on their own", out)
+        self.assertEqual(enroll.call_args.args[1:3], ("https://verfy.example.com", "GOOD-CODE"))
+        self.assertNotIn("verfy team enroll", out)  # already done, not suggested
+        # without --hook and outside a terminal, Claude Code's settings are left alone
+        home2, claude2 = tmpdir(self), tmpdir(self)
+        with mock.patch("verfy.discover.discover", return_value=[]), mock.patch("pathlib.Path.home", return_value=claude2):
+            code, out, _ = run_cli(home2, "init", "--updates", "manual")
+        self.assertEqual(code, 0)
+        self.assertIn("MCP servers   none found", out)
+        self.assertFalse((claude2 / ".claude" / "settings.json").exists())
+        self.assertIn("verfy team enroll --url URL --code CODE", out)
+
+    def test_init_code_needs_the_address(self):
+        with mock.patch("verfy.discover.discover", return_value=[]), self.assertRaises(SystemExit) as e:
+            run_cli(tmpdir(self), "init", "--updates", "manual", "--no-hook", "--code", "GOOD-CODE")
+        self.assertIn("--code needs --url", str(e.exception))
+
 if __name__ == "__main__":
     unittest.main()

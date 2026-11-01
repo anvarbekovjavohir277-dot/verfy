@@ -22,7 +22,7 @@ Verfy checks every tool call a coding agent makes against your policy before it 
 | **Verfy Receipts** | `verfy.receipt/1`: signed, chained, hash-only by default; `verfy verify` detects edits, deletions and reordering; `verfy scitt export` writes SCITT signed statements (COSE_Sign1). |
 | **Verfy Guard** | Deterministic `allow` / `ask` / `deny` for shell commands, file paths, URLs, SQL, payments and leaked secrets, through a Claude Code `PreToolUse` hook or an MCP gateway. Errors never become allow. |
 | **Verfy Scan** | Finds MCP servers in Claude Code, Cursor, Claude Desktop, Codex CLI, Gemini CLI, VS Code and Windsurf configs; flags tool poisoning, hidden instructions, shadowing, invisible Unicode, unpinned packages, plain-http servers and secrets in configs. `verfy import` reads Snyk Agent Scan and Cisco MCP Scanner findings so the gateway can enforce them. |
-| **Verfy Cloud** | Hosted by Verfy: one team policy, device enrollment, server-verified receipts, lock and call approvals, Slack and Telegram alerts, audit log, evidence exports. Devices connect with `verfy team enroll`. |
+| **Verfy Cloud** | Hosted by Verfy: one team policy, device enrollment, server-verified receipts, lock and call approvals, Slack and Telegram alerts, audit log, evidence exports. Devices connect with one command, `verfy init --url … --code …`, and then upload receipts on their own. |
 
 ## Verfy and scanners
 
@@ -43,7 +43,7 @@ They also do things Verfy does not: Snyk scans agent skills, Cisco reads server 
 
 ```bash
 pip install verfy                # Python ≥ 3.10, no dependencies (no Python? see "Without Python" below)
-verfy init                       # signing key + starter policy in ~/.verfy
+verfy init                       # signing key + starter policy in ~/.verfy, the MCP servers found, the Claude Code hook if you want it
 verfy scan --discover            # check the MCP servers your agents can reach
 verfy lock check --update        # lock the tools in .mcp.json into ./verfy.lock (commit it)
 verfy hook install --write       # guard every Claude Code tool call (or install the plugin, below)

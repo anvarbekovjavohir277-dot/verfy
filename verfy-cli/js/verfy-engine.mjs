@@ -690,6 +690,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       if (w[0] === "import" && has(a, "--save")) return F("VFY-SELF-003", "deny", "`verfy import --save` changes which tools the Verfy gateway blocks. A person has to review and run it.");
       if (w[0] === "policy" && w[1] === "use") return F("VFY-SELF-003", "deny", "`verfy policy use` replaces the policy Verfy enforces. A person has to choose and run it.");
       if (w[0] === "init" && has(a, "--force")) return F("VFY-SELF-003", "deny", "`verfy init --force` replaces the signing key, which starts a new receipt chain.");
+      // --url as well as --code: with only --url, the code can come from VERFY_ENROLL_CODE
+      if ((w[0] === "team" && w[1] === "enroll") || (w[0] === "init" && a.some(function (x) { var f = x.split("=")[0]; return f === "--url" || f === "--code"; })))
+        return F("VFY-SELF-003", "deny", "Connects this device to a Verfy Cloud, which decides where its receipts go. A person has to run it.");
+      if (w[0] === "team" && w[1] === "auto-sync" && w[2] === "off") return F("VFY-SELF-003", "deny", "`verfy team auto-sync off` stops this device's receipts from reaching your team. A person has to run it.");
       return null;
     }
     var pip = has(["pip", "pip3", "pipx"], n) || (n === "uv" && (a[0] === "pip" || a[0] === "tool")) || (py && a[0] === "-m" && a[1] === "pip");

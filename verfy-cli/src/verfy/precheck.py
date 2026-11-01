@@ -501,6 +501,11 @@ def _verfy_command(s: dict) -> dict | None:
             return _f("VFY-SELF-003", "deny", "`verfy policy use` replaces the policy Verfy enforces. A person has to choose and run it.")
         if words_[:1] == ["init"] and "--force" in a:
             return _f("VFY-SELF-003", "deny", "`verfy init --force` replaces the signing key, which starts a new receipt chain.")
+        # --url as well as --code: with only --url, the code can come from VERFY_ENROLL_CODE
+        if words_[:2] == ["team", "enroll"] or (words_[:1] == ["init"] and any(x.split("=", 1)[0] in ("--url", "--code") for x in a)):
+            return _f("VFY-SELF-003", "deny", "Connects this device to a Verfy Cloud, which decides where its receipts go. A person has to run it.")
+        if words_[:3] == ["team", "auto-sync", "off"]:
+            return _f("VFY-SELF-003", "deny", "`verfy team auto-sync off` stops this device's receipts from reaching your team. A person has to run it.")
         return None
     pip = n in ("pip", "pip3", "pipx") or (n == "uv" and a[:1] in (["pip"], ["tool"])) or (re.match(r"^python[0-9.]*$|^py$", n) and a[:2] == ["-m", "pip"])
     if pip and "uninstall" in a and any(x.lower() == "verfy" for x in a):

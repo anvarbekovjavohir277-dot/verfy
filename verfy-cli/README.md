@@ -11,7 +11,8 @@ pip install "verfy[fast]"          # optional: faster Ed25519 via `cryptography`
 ## Guard Claude Code
 
 ```bash
-verfy init                      # ~/.verfy: signing key (0600), starter policy
+verfy init                      # ~/.verfy: signing key (0600), starter policy, a line about the MCP servers found;
+                                # in a terminal with Claude Code installed it offers to add the hook (--hook / --no-hook)
 verfy hook install              # shows the change to ~/.claude/settings.json
 verfy hook install --write      # saves it (a backup is kept); --project for ./.claude/settings.json
 ```
@@ -23,7 +24,7 @@ claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
 claude plugin install verfy@verfy
 ```
 
-Claude Code then runs `verfy hook pre-tool-use` before every tool call. The agent cannot switch Verfy off through what Verfy sees: changes to the hook settings, `verfy.lock`, the policy, `~/.verfy` or the Verfy install are denied, changes to MCP configs need approval, and so do `verfy lock approve`, `verfy lock check --update`, `verfy lock files --update`, `verfy import --save`, `verfy init --force` and `pip uninstall verfy` when the agent runs them (denied). Verfy answers **deny** or **ask** with the rule and reason, or stays silent so Claude Code's own permissions decide; it never answers allow itself. Any error becomes `ask` (or `deny` with `"fail_mode": "deny"`). The hook never touches the network.
+Claude Code then runs `verfy hook pre-tool-use` before every tool call. The agent cannot switch Verfy off through what Verfy sees: changes to the hook settings, `verfy.lock`, the policy, `~/.verfy` or the Verfy install are denied, changes to MCP configs need approval, and so do `verfy lock approve`, `verfy lock check --update`, `verfy lock files --update`, `verfy import --save`, `verfy init --force`, `verfy team enroll` (or `verfy init --url/--code`), `verfy team auto-sync off` and `pip uninstall verfy` when the agent runs them (denied). Verfy answers **deny** or **ask** with the rule and reason, or stays silent so Claude Code's own permissions decide; it never answers allow itself. Any error becomes `ask` (or `deny` with `"fail_mode": "deny"`). The hook never touches the network itself; on a device enrolled in Verfy Cloud with automatic upload it starts `verfy sync` as a separate background process, at most every five minutes.
 
 ## Update
 
@@ -126,8 +127,10 @@ verfy verify --ledger receipts.jsonl --pub <key> --kid <chain> [--start-after <h
 ## Verfy Cloud
 
 ```bash
-verfy team enroll --url https://verfy-tech.vercel.app --code atle_…   # code from Dashboard → Devices
-verfy sync                     # upload new receipts (run from cron/CI, never in the hook)
+verfy init --url https://verfy-tech.vercel.app --code atle_…   # set up this machine and connect it (code from Dashboard → Devices)
+verfy team enroll --url https://verfy-tech.vercel.app --code atle_…   # or connect a machine that is already set up
+verfy sync                     # upload new receipts now (they also upload on their own, see below)
+verfy team auto-sync off       # upload only when you run `verfy sync` (on: auto-sync on)
 verfy team pull                # team policy + team-approved locks
 verfy team propose SERVER TOOL # ask admins to approve a changed tool
 verfy team registry report     # share this team's tool pins with Verfy Registry (SHA-256 only, no names)
@@ -135,7 +138,7 @@ verfy team registry lookup     # how many teams saw each pin in verfy.lock (and 
 verfy team status
 ```
 
-Only the public key is sent at enrollment. The device token is stored in `~/.verfy/team.json` (0600). Receipts are uploaded exactly as signed; they contain only hashes of arguments unless you enabled `receipts.include_args`, in which case `sync` needs `--allow-args`.
+Devices enrolled with 0.8.0 or later upload on their own: after the hook or the gateway writes a receipt, Verfy starts `verfy sync` in the background, at most every five minutes, and writes what happened to `~/.verfy/sync.log`. Devices enrolled earlier keep uploading only with `verfy sync` until you run `verfy team auto-sync on`. Only the public key is sent at enrollment. The device token is stored in `~/.verfy/team.json` (0600). Receipts are uploaded exactly as signed; they contain only hashes of arguments unless you enabled `receipts.include_args`, in which case `sync` needs `--allow-args`.
 
 ## Policy
 

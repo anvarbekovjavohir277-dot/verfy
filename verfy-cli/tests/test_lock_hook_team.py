@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -525,6 +526,53 @@ class TeamTests(unittest.TestCase):
     def test_sync_needs_enrollment(self):
         with self.assertRaises(team.TeamError):
             team.sync(self.home, self.ledger, self.key, transport=self.server)
+
+    def test_auto_sync_starts_in_the_background_at_most_every_five_minutes(self):
+        started = []
+
+        def start(home):
+            started.append(home)
+            return True
+
+        self.assertFalse(team.sync_soon(self.home, now=1000.0, start=start))  # not enrolled
+        team.enroll(self.home, "https://verfy.example.com", "GOOD-CODE", self.key, transport=self.server)
+        self.assertIs(team.load_team(self.home)["auto_sync"], True)
+        self.assertTrue(team.sync_soon(self.home, now=1000.0, start=start))
+        self.assertFalse(team.sync_soon(self.home, now=1000.0 + team.SYNC_EVERY - 1, start=start))
+        self.assertTrue(team.sync_soon(self.home, now=1000.0 + team.SYNC_EVERY, start=start))
+        team.set_auto_sync(self.home, False)
+        self.assertFalse(team.sync_soon(self.home, now=10_000.0, start=start))
+        self.assertEqual(started, [self.home, self.home])
+        # enrolled before 0.8.0: no auto_sync in team.json, so off until `verfy team auto-sync on`
+        data = team.load_team(self.home)
+        data.pop("auto_sync")
+        team.save_team(self.home, data)
+        self.assertFalse(team.sync_soon(self.home, now=20_000.0, start=start))
+        # a start that fails never reaches the guard
+        team.set_auto_sync(self.home, True)
+        self.assertFalse(team.sync_soon(self.home, now=30_000.0, start=lambda h: 1 / 0))
+
+    def test_background_upload_runs_verfy_sync_detached(self):
+        with mock.patch("verfy.team.subprocess.Popen") as popen:
+            self.assertTrue(team._start_sync(self.home))
+        cmd, kw = popen.call_args.args[0], popen.call_args.kwargs
+        self.assertEqual((cmd[0], cmd[1:]), (sys.executable, ["-m", "verfy", "sync"]))
+        self.assertEqual(kw["env"]["VERFY_HOME"], str(self.home))
+        self.assertIs(kw["stdin"], subprocess.DEVNULL)
+        self.assertTrue(kw.get("start_new_session") or kw.get("creationflags"))
+        self.assertIn("automatic upload", (self.home / "sync.log").read_text("utf-8"))
+
+    def test_hook_receipt_starts_the_upload(self):
+        Key.generate().save(self.home / "key.json")
+        team.enroll(self.home, "https://verfy.example.com", "GOOD-CODE", Key.load(self.home / "key.json"), transport=self.server)
+        from verfy import cli
+        act = {"server": "claude-code", "tool": "Bash", "arguments": {"command": "ls"}}
+        with mock.patch.dict(os.environ, {"VERFY_HOME": str(self.home)}), mock.patch("verfy.team._start_sync", return_value=True) as start:
+            cli._hook_record(action=act, decision={"verdict": "allow", "findings": []}, session="s", policy=load_policy({}),
+                             outcome={"status": "allowed", "result_sha256": None})
+            cli._hook_record(action=act, decision={"verdict": "allow", "findings": []}, session="s", policy=load_policy({}),
+                             outcome={"status": "allowed", "result_sha256": None})
+        self.assertEqual(start.call_count, 1)  # the second receipt is within five minutes
 
 
 WORKER = r"""

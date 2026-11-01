@@ -279,11 +279,15 @@ class Gateway:
     def _receipt(self, action: dict, decision: dict, outcome: dict) -> dict:
         meta = self.tool_meta.get(action["tool"]) or {}
         with self.ledger_lock:
-            return self.ledger.append(
+            receipt = self.ledger.append(
                 agent=self.policy.get("agent", "agent"), session=self.session, action=action, decision=decision,
                 outcome=outcome, policy_sha256=self.policy_sha, tool_sha256=meta.get("sha256"),
                 include_args=bool(self.policy.get("receipts", {}).get("include_args", False)),
             )
+        # `verfy sync` uploads the ledger in VERFY_HOME, so only that one is uploaded automatically
+        if self.ledger.path == verfy_home() / "ledger.jsonl":
+            teamlib.sync_soon(verfy_home())
+        return receipt
 
     # ------------------------------------------------------------ server side
     def from_server(self, line: bytes) -> None:

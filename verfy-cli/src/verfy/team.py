@@ -1,11 +1,13 @@
 """Verfy Cloud client: enroll this device, upload receipts, propose lock updates
 and pull the team policy and approved locks.
 
-Nothing here runs inside the hook. The gateway calls the team service only
-for the approval queue, when the policy says ``"on_ask": "team"``; if the
-service cannot be reached the call is refused. The guard and the local ledger
-keep working when the team service is down; ``verfy sync`` uploads whatever
-is waiting the next time it runs.
+The hook and the gateway never call the team service themselves. The gateway
+calls it only for the approval queue, when the policy says ``"on_ask": "team"``;
+if the service cannot be reached the call is refused. After writing a receipt
+they call ``sync_soon``: on a device enrolled with automatic upload it starts
+``verfy sync`` as a separate background process, at most every five minutes.
+The guard and the local ledger keep working when the team service is down;
+``verfy sync`` uploads whatever is waiting the next time it runs.
 
 * Only HTTPS endpoints are accepted (plain http only for localhost, for
   development).
@@ -25,6 +27,8 @@ import os
 import platform
 import random
 import socket
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -37,6 +41,8 @@ from .fileio import atomic_write
 from .receipts import Key, b64u, read_ledger, receipt_hash
 
 BATCH_MAX = 500
+SYNC_EVERY = 300  # seconds between automatic uploads
+SYNC_LOG_MAX = 1_000_000
 TIMEOUT = 15.0
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
@@ -139,7 +145,8 @@ class TeamClient:
         raise last
 
 
-def enroll(home: Path, url: str, code: str, key: Key, name: str | None = None, transport: Transport | None = None) -> dict:
+def enroll(home: Path, url: str, code: str, key: Key, name: str | None = None, transport: Transport | None = None,
+           auto_sync: bool = True) -> dict:
     client = TeamClient(url, transport=transport)
     res = client.call("POST", "/api/v1/devices/enroll", {
         "code": code.strip(),
@@ -150,7 +157,8 @@ def enroll(home: Path, url: str, code: str, key: Key, name: str | None = None, t
     })
     if not isinstance(res, dict) or not isinstance(res.get("token"), str) or not isinstance(res.get("device_id"), str):
         raise TeamError("enrollment answer is missing the device token")
-    data = {"url": client.url, "token": res["token"], "device_id": res["device_id"], "kid": key.kid, "org": str(res.get("org_name", ""))}
+    data = {"url": client.url, "token": res["token"], "device_id": res["device_id"], "kid": key.kid, "org": str(res.get("org_name", "")),
+            "auto_sync": auto_sync}
     save_team(home, data)
     return data
 
@@ -185,6 +193,60 @@ def sync(home: Path, ledger_path: Path, key: Key, *, allow_args: bool = False, t
         state = {"uploaded_seq": last["seq"], "head": receipt_hash(last)}
         atomic_write(state_p, json.dumps(state) + "\n")
     return {"uploaded": len(pending), "accepted": accepted, "duplicates": duplicates, "head_seq": state.get("uploaded_seq", done)}
+
+
+def set_auto_sync(home: Path, on: bool) -> dict:
+    team = load_team(home)
+    if team is None:
+        raise TeamError("this device is not enrolled; run `verfy team enroll`")
+    team["auto_sync"] = on
+    save_team(home, team)
+    return team
+
+
+def sync_soon(home: Path, now: float | None = None, start: Callable[[Path], bool] | None = None) -> bool:
+    """Start `verfy sync` in the background, at most every SYNC_EVERY seconds, on a device enrolled with
+    automatic upload (devices enrolled before 0.8.0 have it off until `verfy team auto-sync on`).
+
+    Called by the hook and the gateway after each receipt, so it never goes online itself and never raises."""
+    try:
+        team = load_team(home)
+        if not team or team.get("auto_sync") is not True:
+            return False
+        now = time.time() if now is None else now
+        mark = home / "sync-soon.json"
+        try:
+            last = float(json.loads(mark.read_text("utf-8")).get("started_at", 0))
+        except (OSError, ValueError, AttributeError, TypeError):
+            last = 0.0
+        if 0 <= now - last < SYNC_EVERY:
+            return False
+        atomic_write(mark, json.dumps({"started_at": now}) + "\n")
+        return (start or _start_sync)(home)
+    except Exception:  # noqa: BLE001 (a failed upload must never break the guard)
+        return False
+
+
+def _start_sync(home: Path) -> bool:
+    log = home / "sync.log"
+    if log.exists() and log.stat().st_size > SYNC_LOG_MAX:
+        log.replace(home / "sync.log.1")
+    out = open(log, "a", encoding="utf-8")  # noqa: SIM115 (the child owns it)
+    out.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} automatic upload\n")
+    out.flush()
+    # the standalone build accepts `-m verfy` too
+    kw: dict = {"stdin": subprocess.DEVNULL, "stdout": out, "stderr": subprocess.STDOUT, "env": {**os.environ, "VERFY_HOME": str(home)}}
+    if os.name == "nt":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True
+    try:
+        subprocess.Popen([sys.executable, "-m", "verfy", "sync"], **kw)  # noqa: S603
+    except OSError:
+        return False
+    finally:
+        out.close()
+    return True
 
 
 def propose_lock(home: Path, server: str, definition: dict, digest_: str, transport: Transport | None = None) -> dict:

@@ -118,11 +118,64 @@ def cmd_init(args) -> int:
         updates.save_settings(home, mode=mode)
     how = "checked once a day, installed in the background" if mode == "auto" else "only when you run `verfy update`"
     print(f"Updates       {mode}: {how} (change with `verfy update --auto {'off' if mode == 'auto' else 'on'}`)")
+    _init_mcp_summary()
+    hook = args.hook
+    if hook is None:
+        # asked, never assumed: it changes Claude Code's own settings
+        hook = _claude_code_present() and _interactive() and _ask_yes("Guard every Claude Code tool call with the Verfy hook?")
+    if hook:
+        path, changed, _ = _install_hook(args.project, write=True)
+        print(f"Claude Code   {path}  ({'hook added, a backup of the old file is kept' if changed else 'hook already there'})")
+    code = args.code or os.environ.get("VERFY_ENROLL_CODE")
+    if code:
+        if not args.url:
+            raise SystemExit("verfy init: --code needs --url, the Verfy Cloud address shown with the code in Dashboard > Devices")
+        data = teamlib.enroll(home, args.url, code, k, args.name)
+        print(f"Verfy Cloud   enrolled as {data['device_id']} with {data['url']}" + (f" for {data['org']}" if data.get("org") else "")
+              + "; the private key stayed on this machine")
+        try:
+            res = teamlib.sync(home, home / "ledger.jsonl", k)
+            now = f"{res['uploaded']} uploaded now"
+        except teamlib.TeamError as e:
+            now = f"none uploaded now: {e}"
+        print(f"              receipts upload on their own, at most every 5 minutes ({now}; stop with `verfy team auto-sync off`)")
     print("\nNext:")
-    print("  verfy scan --discover           check the MCP servers in your Claude Code / Cursor configs")
-    print("  verfy hook install --write      guard every Claude Code tool call (PreToolUse hook)")
+    print("  verfy scan --discover           the findings for each MCP server in your Claude Code / Cursor configs")
+    if not hook:
+        print("  verfy hook install --write      guard every Claude Code tool call (PreToolUse hook)")
     print("  verfy wrap <config.json>        put MCP servers behind the gateway (scan, lock, pre-check, receipts)")
+    if not code:
+        print("  verfy team enroll --url URL --code CODE   connect this machine to Verfy Cloud (code from Dashboard > Devices)")
     return 0
+
+
+def _init_mcp_summary() -> None:
+    """One line about the MCP servers in this machine's configs; reads the config files only, starts nothing."""
+    try:
+        report = cfgscan.scan_configs(cfgscan.discover())
+    except Exception as e:  # noqa: BLE001 (a broken config must not stop init)
+        print(f"MCP servers   could not read the configs: {e}")
+        return
+    servers = report["servers"]
+    if not servers:
+        print("MCP servers   none found (looked for .mcp.json, ~/.claude.json, Cursor and Claude Desktop configs)")
+        return
+    worst = [s["findings"][0]["severity"] for s in servers if s["findings"]]
+    counts = ", ".join(f"{worst.count(sev)} {sev}" for sev in ("critical", "high", "medium", "low") if worst.count(sev))
+    configs = len([cfg for cfg in report["configs"] if not cfg.get("error")])
+    print(f"MCP servers   {len(servers)} in {configs} config(s): " + (f"{counts} (worst finding per server)" if counts else "no findings"))
+
+
+def _claude_code_present() -> bool:
+    return (Path.home() / ".claude").is_dir() or (Path.home() / ".claude.json").is_file() or shutil.which("claude") is not None
+
+
+def _ask_yes(question: str) -> bool:
+    try:
+        answer = input(f"{question} [Y/n]: ").strip().lower()
+    except EOFError:
+        answer = ""
+    return answer in ("", "y", "yes")
 
 
 def _interactive() -> bool:
@@ -941,9 +994,11 @@ def _hook_record(*, action: dict, decision: dict, session: str, policy: dict, ou
     if not kp.exists():
         return None  # `verfy init` not run yet: still guard, just no receipt
     led = Ledger(home_file("ledger.jsonl"), Key.load(kp))
-    return led.append(agent=policy.get("agent", "claude-code"), session=session, action=action, decision=decision,
-                      outcome=outcome, policy_sha256=policy_digest(policy),
-                      include_args=bool((policy.get("receipts") or {}).get("include_args", False)))
+    receipt = led.append(agent=policy.get("agent", "claude-code"), session=session, action=action, decision=decision,
+                         outcome=outcome, policy_sha256=policy_digest(policy),
+                         include_args=bool((policy.get("receipts") or {}).get("include_args", False)))
+    teamlib.sync_soon(verfy_home())
+    return receipt
 
 
 def _hook_fail_mode() -> str:
@@ -953,24 +1008,31 @@ def _hook_fail_mode() -> str:
         return "ask"
 
 
-def cmd_hook(args) -> int:
-    if args.event == "install":
-        path = hooks.settings_path(args.project)
-        current = json.loads(path.read_text("utf-8")) if path.exists() else {}
-        updated, changed = hooks.with_hook(current)
-        if not changed:
-            print(f"Verfy hook is already in {path}.")
-            return 0
-        text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
-        if not args.write:
-            sys.stdout.write(text)
-            print(f"[verfy] would update {path} (add --write to save; a backup is kept)", file=sys.stderr)
-            return 0
+def _install_hook(project: bool, write: bool) -> tuple[Path, bool, str]:
+    """Add the PreToolUse hook to Claude Code's settings. Returns (path, changed, new text); writes only with write=True,
+    keeping a backup of the old file."""
+    path = hooks.settings_path(project)
+    current = json.loads(path.read_text("utf-8")) if path.exists() else {}
+    updated, changed = hooks.with_hook(current)
+    text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
+    if changed and write:
         if path.exists():
             shutil.copyfile(path, path.with_suffix(".json.verfy-backup"))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, "utf-8")
-        print(f"Added `{hooks.PRE_TOOL_COMMAND}` to {path}.")
+    return path, changed, text
+
+
+def cmd_hook(args) -> int:
+    if args.event == "install":
+        path, changed, text = _install_hook(args.project, args.write)
+        if not changed:
+            print(f"Verfy hook is already in {path}.")
+        elif not args.write:
+            sys.stdout.write(text)
+            print(f"[verfy] would update {path} (add --write to save; a backup is kept)", file=sys.stderr)
+        else:
+            print(f"Added `{hooks.PRE_TOOL_COMMAND}` to {path}.")
         return 0
     return hooks.run_hook(args.event, record=_hook_record, get_policy=_hook_policy, fail_mode=_hook_fail_mode)
 
@@ -985,6 +1047,7 @@ def cmd_team_enroll(args) -> int:
     data = teamlib.enroll(verfy_home(), args.url, code, key, args.name)
     print(f"Enrolled device {data['device_id']} ({key.kid}) with {data['url']}" + (f" for {data['org']}" if data.get("org") else "") + ".")
     print("The private key stayed on this machine; the team service only has the public key.")
+    print("Receipts upload on their own, at most every 5 minutes; stop with `verfy team auto-sync off`.")
     return 0
 
 
@@ -995,7 +1058,14 @@ def cmd_team_status(args) -> int:
         return 1
     state_p = home_file("sync-state.json")
     state = json.loads(state_p.read_text("utf-8")) if state_p.exists() else {}
-    print(f"Team     {team['url']}\nDevice   {team['device_id']}  ({team['kid']})\nUploaded through seq {state.get('uploaded_seq', 'none')}")
+    auto = "on, at most every 5 minutes" if team.get("auto_sync") is True else "off (`verfy sync` uploads)"
+    print(f"Team     {team['url']}\nDevice   {team['device_id']}  ({team['kid']})\nUploads  {auto}\nUploaded through seq {state.get('uploaded_seq', 'none')}")
+    return 0
+
+
+def cmd_team_auto_sync(args) -> int:
+    teamlib.set_auto_sync(verfy_home(), args.state == "on")
+    print("Receipts now upload on their own, at most every 5 minutes." if args.state == "on" else "Receipts now upload only when you run `verfy sync`.")
     return 0
 
 
@@ -1160,11 +1230,16 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--version", action="version", version=f"verfy {__version__}")
     sub = ap.add_subparsers(dest="command_name", metavar="command")
 
-    p = sub.add_parser("init", help="create a signing key and a starter policy")
-    p.add_argument("--project", action="store_true", help="write verfy.policy.json in this folder instead of ~/.verfy")
+    p = sub.add_parser("init", help="set up this machine: signing key, starter policy, the MCP servers found, the Claude Code hook and Verfy Cloud")
+    p.add_argument("--project", action="store_true", help="write verfy.policy.json (and the hook, with --hook) in this folder instead of ~/.verfy")
     p.add_argument("--force", action="store_true")
     p.add_argument("--template", choices=list(TEMPLATES), help="start from a ready-made policy (see `verfy policy templates`)")
     p.add_argument("--updates", choices=updates.MODES, help="update automatically, or only when you run `verfy update` (asked the first time)")
+    p.add_argument("--hook", action=argparse.BooleanOptionalAction, default=None,
+                   help="add the Claude Code hook (asked in a terminal when Claude Code is installed; never added otherwise)")
+    p.add_argument("--url", help="Verfy Cloud address, with --code")
+    p.add_argument("--code", help="one-time enrollment code from Dashboard > Devices: also connects this machine to Verfy Cloud")
+    p.add_argument("--name", help="device name shown in the dashboard (default: this computer's name)")
     p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("policy", help="ready-made policies: strict, read-only, ci")
@@ -1342,6 +1417,9 @@ def build_parser() -> argparse.ArgumentParser:
     x.set_defaults(fn=cmd_team_enroll)
     x = tm.add_parser("status", help="show enrollment and upload state")
     x.set_defaults(fn=cmd_team_status)
+    x = tm.add_parser("auto-sync", help="upload receipts on their own (at most every 5 minutes) or only with `verfy sync`")
+    x.add_argument("state", choices=["on", "off"])
+    x.set_defaults(fn=cmd_team_auto_sync)
     x = tm.add_parser("sync", help="upload new receipts")
     x.add_argument("--ledger")
     x.add_argument("--key")
