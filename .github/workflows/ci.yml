@@ -30,6 +30,8 @@ jobs:
         run: node scripts/check-brand.mjs
       - name: No secrets in the repository
         run: node scripts/check-secrets.mjs
+      - name: No Verfy Cloud files in this public repository
+        run: node scripts/check-public.mjs
 
   cli:
     name: Verfy CLI (Python ${{ matrix.python }})
