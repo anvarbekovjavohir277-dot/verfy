@@ -2,7 +2,7 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
-## Unreleased
+## 0.8.0 (2026-11-01)
 
 - **Set up a machine with one command.** `verfy init --url … --code …` creates the signing key and policy as before, prints one line about the MCP servers in your Claude Code, Cursor and Claude Desktop configs (it reads the files and starts nothing), offers to add the Claude Code hook when Claude Code is installed and you are in a terminal (`--hook` / `--no-hook`; never added without asking), and connects the machine to Verfy Cloud. Until now this took `verfy init`, `verfy hook install --write`, `verfy team enroll` and a `verfy sync` after every session.
 - **Receipts upload on their own.** On a device enrolled with this version, after the hook or the gateway writes a receipt, Verfy starts `verfy sync` as a separate background process, at most every five minutes; the hook itself still never goes online, and a failed upload never affects the guard. What happened goes to `~/.verfy/sync.log`. `verfy team auto-sync off` goes back to uploading only with `verfy sync`; devices enrolled before this version stay that way until `verfy team auto-sync on`. `verfy team status` shows which.
