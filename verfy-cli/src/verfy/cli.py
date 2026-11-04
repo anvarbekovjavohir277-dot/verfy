@@ -20,6 +20,7 @@ from . import discover as cfgscan
 from . import hook as hooks
 from . import lock as locks
 from . import team as teamlib
+from . import sandbox as sandboxes
 from . import update as updates
 from .gateway import Gateway, verfy_home
 from .mcp_client import MCPError, expand, list_tools, list_tools_http
@@ -1122,6 +1123,46 @@ def _hook_fail_mode() -> str:
         return "ask"
 
 
+def _policy_hosts(args) -> list[str]:
+    return [str(h) for h in (get_policy(args).get("network") or {}).get("allow", [])]
+
+
+def cmd_sandbox_status(args) -> int:
+    state = sandboxes.effective(Path.cwd(), Path.home())
+    findings = sandboxes.check(state, _policy_hosts(args))
+    if args.json:
+        print(json.dumps({"sandbox": state, "findings": findings}, indent=2))
+    else:
+        print(c("Claude Code sandbox", "1") + "  " + c("Verfy checks what it can see in the settings files; it does not run the sandbox.", "2"))
+        for f in findings:
+            print(f"  {c(f['severity'].upper().ljust(8), SCOL[f['severity']])} {f['rule']}  {f['message']}")
+        if findings:
+            print("Fix what settings can fix with `verfy sandbox sync --write`.")
+        else:
+            print(f"{c('OK', '32;1')}  the sandbox is on, without the retry outside it, and credentials are out of reach.")
+    return 1 if findings else 0
+
+
+def cmd_sandbox_sync(args) -> int:
+    path = hooks.settings_path(args.project)
+    current = json.loads(path.read_text("utf-8")) if path.exists() else {}
+    updated, changed = sandboxes.with_sandbox(current, _policy_hosts(args))
+    if not changed:
+        print(f"{path} already has these sandbox settings.")
+        return 0
+    text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
+    if not args.write:
+        print(json.dumps(updated["sandbox"], indent=2, ensure_ascii=False))
+        print(f"[verfy] would update `sandbox` in {path} (add --write to save; a backup is kept)", file=sys.stderr)
+        return 0
+    if path.exists():
+        shutil.copyfile(path, path.with_suffix(".json.verfy-backup"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, "utf-8")
+    print(f"Updated `sandbox` in {path}. Restart Claude Code. If a command needs a host or a path, add it to the sandbox settings.")
+    return 0
+
+
 def _install_hook(project: bool, write: bool) -> tuple[Path, bool, str]:
     """Add the PreToolUse hook to Claude Code's settings. Returns (path, changed, new text); writes only with write=True,
     keeping a backup of the old file."""
@@ -1531,6 +1572,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project", action="store_true", help="install into ./.claude/settings.json instead of ~/.claude/settings.json")
     p.add_argument("--write", action="store_true", help="save the settings change (a backup is kept)")
     p.set_defaults(fn=cmd_hook)
+
+    p = sub.add_parser("sandbox", help="check Claude Code's sandbox settings, and add what is missing")
+    sb = p.add_subparsers(dest="sandbox_cmd", metavar="action", required=True)
+    x = sb.add_parser("status", help="report what the settings leave open (exit 1 if anything)")
+    x.add_argument("--policy")
+    x.add_argument("--json", action="store_true")
+    x.set_defaults(fn=cmd_sandbox_status)
+    x = sb.add_parser("sync", help="turn the sandbox on, close the retry outside it, block credentials and allow your policy's hosts")
+    x.add_argument("--project", action="store_true", help="./.claude/settings.json instead of ~/.claude/settings.json")
+    x.add_argument("--policy")
+    x.add_argument("--write", action="store_true", help="save the change (a backup is kept)")
+    x.set_defaults(fn=cmd_sandbox_sync)
 
     p = sub.add_parser("sync", help="upload new receipts to Verfy Cloud (same as `verfy team sync`)")
     p.add_argument("--ledger")

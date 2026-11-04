@@ -83,6 +83,8 @@ CASES = [
     ("edit the agent-files lock", A("Edit", {"file_path": "/home/you/.verfy/agent-files.lock", "old_string": "a", "new_string": "b"})),
     ("agent resets key", S("verfy init --force")),
     ("agent swaps policy", S("verfy policy use read-only --force")),
+    ("agent changes the sandbox settings", S("verfy sandbox sync --write")),
+    ("looking at the sandbox settings is fine", S("verfy sandbox status && verfy sandbox sync")),
     ("agent rolls a server back", S("verfy lock rollback docs --to 1.2.3 --write")),
     ("looking at a rollback is fine", S("verfy lock rollback docs --to 1.2.3")),
     ("agent enrolls the device elsewhere", S("verfy team enroll --url https://cloud.example.net --code atle_x")),

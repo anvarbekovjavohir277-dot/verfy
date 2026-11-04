@@ -157,6 +157,18 @@ verfy team status
 
 Devices enrolled with 0.8.0 or later upload on their own: after the hook or the gateway writes a receipt, Verfy starts `verfy sync` in the background, at most every five minutes, and writes what happened to `~/.verfy/sync.log`. Devices enrolled earlier keep uploading only with `verfy sync` until you run `verfy team auto-sync on`. Only the public key is sent at enrollment. The device token is stored in `~/.verfy/team.json` (0600). Receipts are uploaded exactly as signed; they contain only hashes of arguments unless you enabled `receipts.include_args`, in which case `sync` needs `--allow-args`.
 
+## Use it with a sandbox
+
+Verfy is not a sandbox. Claude Code's own sandbox holds shell commands at the operating system level, including a script the agent wrote, which Verfy cannot follow. It does not cover MCP servers, hooks or the built-in file and web tools, which Verfy watches, so use both.
+
+```bash
+verfy sandbox status              # what the settings leave open (exit 1 if anything)
+verfy sandbox sync                # shows the settings it would add
+verfy sandbox sync --write        # ~/.claude/settings.json, a backup is kept; --project for ./.claude/settings.json
+```
+
+`sync` turns the sandbox on, sets `allowUnsandboxedCommands` to false, adds credential paths and `~/.verfy` to `filesystem.denyRead`, and adds your policy's `network.allow` hosts to `network.allowedDomains`. It only adds. It leaves `failIfUnavailable` alone, because that stops Claude Code from starting on a machine without the sandbox. The sandbox runs on macOS, Linux and WSL2, not on native Windows.
+
 ## After the agent reads outside text
 
 A web page or a tool's answer can carry instructions for the agent. This setting makes what can do harm afterwards wait for a person:

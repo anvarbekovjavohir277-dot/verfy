@@ -17,7 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from verfy import discover, hook, lock, sessions, team  # noqa: E402
+from verfy import discover, hook, lock, sandbox, sessions, team  # noqa: E402
 from verfy.cli import main as cli_main  # noqa: E402
 from verfy.mcp_client import MCPError  # noqa: E402
 from verfy.policy import load_policy  # noqa: E402
@@ -461,6 +461,66 @@ class RollbackTests(unittest.TestCase):
             self.assertEqual(discover.pin_package(written, "1.2.3", ecosystem), want)
         self.assertIsNone(discover.package_in({"command": "node", "args": ["server.js"]}))
         self.assertIsNone(discover.package_in({"url": "https://x"}))
+
+
+class SandboxTests(unittest.TestCase):
+    def setUp(self):
+        self.home, self.cwd = tmpdir(self), tmpdir(self)
+
+    def write(self, path, data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), "utf-8")
+
+    def rules(self, hosts=(), windows=False):
+        return [f["rule"] for f in sandbox.check(sandbox.effective(self.cwd, self.home), list(hosts), windows)]
+
+    def test_nothing_set_up_is_reported(self):
+        self.assertEqual(self.rules(), ["VFY-SBX-001", "VFY-SBX-002", "VFY-SBX-003"])
+        self.assertIn("VFY-SBX-006", self.rules(windows=True))
+
+    def test_what_sync_writes_passes_the_check(self):
+        settings, changed = sandbox.with_sandbox({}, ["github.com"])
+        self.assertTrue(changed)
+        self.write(self.home / ".claude" / "settings.json", settings)
+        self.assertEqual(self.rules(["github.com"]), [])
+
+    def test_sync_keeps_what_is_there_and_changes_nothing_twice(self):
+        old = {"hooks": {"x": 1}, "sandbox": {"excludedCommands": ["docker"], "filesystem": {"denyRead": ["~/secret"], "allowWrite": ["/tmp/b"]},
+                                               "network": {"allowedDomains": ["a.example"]}}}
+        new, _ = sandbox.with_sandbox(old, ["b.example"])
+        self.assertEqual(new["hooks"], {"x": 1})
+        self.assertEqual(new["sandbox"]["excludedCommands"], ["docker"])
+        self.assertEqual(new["sandbox"]["filesystem"]["allowWrite"], ["/tmp/b"])
+        self.assertEqual(new["sandbox"]["filesystem"]["denyRead"][0], "~/secret")
+        self.assertIn("~/.ssh", new["sandbox"]["filesystem"]["denyRead"])
+        self.assertIn("~/.verfy", new["sandbox"]["filesystem"]["denyRead"])
+        self.assertEqual(new["sandbox"]["network"]["allowedDomains"], ["a.example", "b.example"])
+        self.assertNotIn("failIfUnavailable", new["sandbox"])  # it would stop Claude Code from starting where there is no sandbox
+        self.assertEqual(sandbox.with_sandbox(new, ["b.example"]), (new, False))
+
+    def test_the_nearest_file_wins_and_lists_add_up(self):
+        self.write(self.home / ".claude" / "settings.json", {"sandbox": {"enabled": True, "filesystem": {"denyRead": ["~/.ssh"]}}})
+        self.write(self.cwd / ".claude" / "settings.local.json", {"sandbox": {"enabled": False, "filesystem": {"denyRead": ["~/.aws"]}}})
+        state = sandbox.effective(self.cwd, self.home)
+        self.assertIs(state["enabled"], False)
+        self.assertEqual(state["denyRead"], ["~/.aws", "~/.ssh"])
+
+    def test_a_broken_settings_file_counts_as_nothing_set(self):
+        (self.home / ".claude").mkdir()
+        (self.home / ".claude" / "settings.json").write_text("{not json", "utf-8")
+        self.assertIn("VFY-SBX-001", self.rules())
+
+    def test_commands(self):
+        with mock.patch("pathlib.Path.home", return_value=self.home):
+            code, out, _ = run_cli(self.home, "sandbox", "status")
+            self.assertEqual(code, 1)
+            self.assertIn("VFY-SBX-001", out)
+            code, out, err = run_cli(self.home, "sandbox", "sync")
+            self.assertEqual(code, 0)
+            self.assertIn("add --write", err)
+            self.assertFalse((self.home / ".claude" / "settings.json").exists())
+            self.assertEqual(run_cli(self.home, "sandbox", "sync", "--write")[0], 0)
+            self.assertIs(json.loads((self.home / ".claude" / "settings.json").read_text("utf-8"))["sandbox"]["enabled"], True)
 
 
 class SessionTests(unittest.TestCase):

@@ -1132,6 +1132,40 @@
    }
   },
   {
+   "name": "agent changes the sandbox settings",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy sandbox sync --write"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "looking at the sandbox settings is fine",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy sandbox status && verfy sandbox sync"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "allow",
+    "kind": "shell",
+    "rules": []
+   }
+  },
+  {
    "name": "agent rolls a server back",
    "action": {
     "tool": "Bash",

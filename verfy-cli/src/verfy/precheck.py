@@ -493,6 +493,8 @@ def _verfy_command(s: dict) -> dict | None:
             return _f("VFY-SELF-003", "deny", f"`verfy {' '.join(words_[:2])}` approves a tool change for the agent. A person has to review and run it.")
         if words_[:2] == ["lock", "check"] and "--update" in a:
             return _f("VFY-SELF-003", "deny", "`verfy lock check --update` writes verfy.lock for the agent. A person has to review and run it.")
+        if words_[:2] == ["sandbox", "sync"] and "--write" in a:
+            return _f("VFY-SELF-003", "deny", "`verfy sandbox sync --write` changes Claude Code's settings. A person has to review and run it.")
         if words_[:2] == ["lock", "rollback"] and "--write" in a:
             return _f("VFY-SELF-003", "deny", "`verfy lock rollback --write` rewrites an MCP config. A person has to review and run it.")
         if words_[:2] == ["lock", "files"] and "--update" in a:
