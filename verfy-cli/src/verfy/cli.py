@@ -536,6 +536,9 @@ def cmd_ledger_hash(args) -> int:
 
 def cmd_ledger_show(args) -> int:
     receipts = read_ledger(_ledger_path(args))
+    if args.json:
+        print(json.dumps(receipts[-args.n:], indent=2))
+        return 0
     for r in receipts[-args.n:]:
         a, d, o = r.get("action", {}), r.get("decision", {}), r.get("outcome", {})
         v = d.get("verdict", "?")
@@ -1325,6 +1328,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = lsub.add_parser("show", help="list recent receipts")
     s.add_argument("--ledger")
     s.add_argument("-n", type=int, default=20)
+    s.add_argument("--json", action="store_true", help="print recent receipts as a JSON array")
     s.set_defaults(fn=cmd_ledger_show)
     s = lsub.add_parser("hash", help="the hash this machine records for arguments or a result, to compare with a receipt")
     s.add_argument("value", help="the arguments or result as JSON")
