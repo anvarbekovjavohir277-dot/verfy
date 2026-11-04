@@ -24,6 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, IO
 
+from . import sessions
 from .policy import load_policy
 from .precheck import check
 
@@ -72,17 +73,24 @@ def _reason(decision: dict, receipt: dict | None) -> str:
     return f"Verfy: this action needs your approval: {rules}.{tail}"
 
 
-def evaluate(payload: dict, policy: dict) -> tuple[dict, dict]:
+def evaluate(payload: dict, policy: dict, context: dict | None = None) -> tuple[dict, dict]:
     action = action_from_payload(payload)
-    return action, check(action, policy)
+    return action, check(action, policy, context)
 
 
-def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], record: Callable[..., dict | None] | None) -> dict | None:
+def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], record: Callable[..., dict | None] | None,
+                     home: Path | None = None) -> dict | None:
     if not isinstance(payload, dict):
         raise ValueError("hook input must be a JSON object")
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     policy = get_policy(cwd)
-    action, decision = evaluate(payload, policy)
+    tracked = str(payload.get("session_id") or "") if home and (policy.get("session") or {}).get("after_outside_text", "off") != "off" else ""
+    source = sessions.source_of(home, tracked) if tracked else None
+    action, decision = evaluate(payload, policy, {"untrusted": source} if source else None)
+    if tracked and decision["verdict"] != "deny":
+        read = sessions.outside_text(action, decision, policy)
+        if read:
+            sessions.mark(home, tracked, read)
     receipt = None
     if record is not None:
         receipt = record(action=action, decision=decision, session=str(payload.get("session_id") or "ses_" + uuid.uuid4().hex[:12]),
@@ -99,7 +107,7 @@ def fail_safe(message: str, mode: str = "ask") -> dict:
 
 def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None = None,
              get_policy: Callable[[str | None], dict] | None = None, record: Callable[..., dict | None] | None = None,
-             fail_mode: Callable[[], str] | None = None) -> int:
+             fail_mode: Callable[[], str] | None = None, home: Path | None = None) -> int:
     """Entry point for ``verfy hook <event>``. Always exits 0 with JSON on stdout."""
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
@@ -111,7 +119,7 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
         raw = stdin.read(MAX_STDIN + 1)
         if len(raw) > MAX_STDIN:
             raise ValueError("hook input is larger than 4 MB")
-        out = run_pre_tool_use(json.loads(raw), get_policy=get_policy, record=record)
+        out = run_pre_tool_use(json.loads(raw), get_policy=get_policy, record=record, home=home)
     except Exception as e:  # noqa: BLE001 - every failure must become ask/deny, never allow
         mode = "ask"
         try:

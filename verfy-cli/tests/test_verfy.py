@@ -492,6 +492,22 @@ class CLI(unittest.TestCase):
 
 
 
+class GatewaySessions(GatewayTests):
+    """After a server's answer, the same gateway refuses what can do harm."""
+
+    def test_after_a_tool_answer_a_network_tool_needs_a_person(self):
+        init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}
+        listing = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
+        read = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "notes.txt"}}}
+        fetch = {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "fetch_url", "arguments": {"url": "https://example.org"}}}
+        policy = {"session": {"after_outside_text": "ask"}, "lock": {"on_new": "allow"}, "network": {"allow": ["example.org"]}}
+        got = self.run_gateway([init, listing, read, fetch], policy=policy)
+        replies = got[0] if isinstance(got, tuple) else got
+        self.assertFalse(replies[3]["result"].get("isError"))
+        self.assertTrue(replies[4]["result"]["isError"])
+        self.assertIn("VFY-SESSION-001", replies[4]["result"]["content"][0]["text"])
+
+
 class SaltedHashes(unittest.TestCase):
     """Receipts go to Verfy Cloud: a hash there must not let anyone guess a short argument."""
 

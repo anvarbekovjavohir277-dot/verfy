@@ -48,6 +48,8 @@ def load_policy(source: str | os.PathLike | dict | None = None, *, workspace: st
         raise ValueError("approval_timeout must be a whole number of seconds from 10 to 900")
     if pol.get("fail_mode") not in ("ask", "deny"):
         raise ValueError("fail_mode must be ask or deny (Verfy never fails open)")
+    if (pol.get("session") or {}).get("after_outside_text") not in ("off", "ask", "deny"):
+        raise ValueError("session.after_outside_text must be off, ask or deny")
     if (pol.get("lock") or {}).get("on_new") not in ("ask", "deny", "allow"):
         raise ValueError("lock.on_new must be ask, deny or allow")
     return pol

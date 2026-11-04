@@ -32,6 +32,9 @@
    "lock": {
     "on_new": "deny"
    },
+   "session": {
+    "after_outside_text": "deny"
+   },
    "receipts": {
     "include_args": false
    }

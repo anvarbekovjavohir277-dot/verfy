@@ -20,7 +20,7 @@
    "decision": {
     "verdict": "allow",
     "rules": [],
-    "policy_sha256": "sha256:66ed6885f88f162c8ae32151d3eb249ebd51e4cb8107f33a0d3367a4a17a9ee2"
+    "policy_sha256": "sha256:35aac9701910165b005298ca7dfd612669a19671e5fff185e05aa89217f36426"
    },
    "outcome": {
     "status": "ok",
@@ -28,13 +28,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "yHRGsrzjhq7g3dzeWgrcDv4LJSUSKFpFtRmAi9WYM6X8CCcdVsYdrgMnAPoTsulw4SfVYPaEudifoJOevSkIDQ"
+   "sig": "0W8fNHv1I_j5ZVF-BjIMM4ovDMPEEbGjsaEyrGagtzXNK4hBXSbhEIUDucVBPm4Pu-ILJRhkQrqLLqPHg7ClAw"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0001",
    "seq": 1,
-   "prev": "sha256:5912be441cd528ccd4bf16b7e71350c5b52bc32f577820a08d9a961c3d911afa",
+   "prev": "sha256:e0ca877cd6afa315a2ce6d48d1023fb1c9baf4055bef0d45b8603df3f9393dc5",
    "issued_at": "2026-10-11T09:00:01.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -49,7 +49,7 @@
     "rules": [
      "VFY-SH-001"
     ],
-    "policy_sha256": "sha256:66ed6885f88f162c8ae32151d3eb249ebd51e4cb8107f33a0d3367a4a17a9ee2"
+    "policy_sha256": "sha256:35aac9701910165b005298ca7dfd612669a19671e5fff185e05aa89217f36426"
    },
    "outcome": {
     "status": "blocked",
@@ -57,13 +57,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "ktPSqLCI62CgjCYVZ1mNzoY53Jc5_gC9PptJE3vh5scG0XsyqtsE_sjYhAXSWnIrpZjUcvLhwgPCqL1o0AauCQ"
+   "sig": "0fo5qLdhuzEnefDw_Gfv18Vt6Qf8V5Ujx0YkMHwdKVsdJ16Qcp2LFJqbOeNbhvMVcWCi-zkw9f-pJqEmF-2CDQ"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0002",
    "seq": 2,
-   "prev": "sha256:1be2eaf96381669aa904098c141f945abe7a11910313e61f76254bee6b9ed0d9",
+   "prev": "sha256:15384370c97394ad5758035b6dd43a1972de73ebf907b93502eabe6423ef7209",
    "issued_at": "2026-10-11T09:00:02.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -76,7 +76,7 @@
    "decision": {
     "verdict": "allow",
     "rules": [],
-    "policy_sha256": "sha256:66ed6885f88f162c8ae32151d3eb249ebd51e4cb8107f33a0d3367a4a17a9ee2"
+    "policy_sha256": "sha256:35aac9701910165b005298ca7dfd612669a19671e5fff185e05aa89217f36426"
    },
    "outcome": {
     "status": "asked",
@@ -84,13 +84,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "DagfjCObICJ1cNluiRpNf3PV0enmHCpY_JDsjq7MnrQmHVGwTcknSsFQCrTAt3eRWuhPeIOJW1LBioI04OYGAw"
+   "sig": "xD4zKRbPsEpi0LXVLbQfFxB7XT5EuEM9QXfOXNMCavIzdISrbwcOrSewzyjltdEenz5CxRSB7wSGDq-tKh4_DA"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0003",
    "seq": 3,
-   "prev": "sha256:7697567412a179d0cfade57a1475b3d6875b2cec74b36053f9630bf50701d08c",
+   "prev": "sha256:29fea47c0615722e505cd9e2cddbb9f5042d912748ab759121d7ca724e392dd3",
    "issued_at": "2026-10-11T09:00:03.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -105,7 +105,7 @@
     "rules": [
      "VFY-FS-003"
     ],
-    "policy_sha256": "sha256:66ed6885f88f162c8ae32151d3eb249ebd51e4cb8107f33a0d3367a4a17a9ee2"
+    "policy_sha256": "sha256:35aac9701910165b005298ca7dfd612669a19671e5fff185e05aa89217f36426"
    },
    "outcome": {
     "status": "asked",
@@ -113,13 +113,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "Epjj-L5imVRsDMHpDOHzeaJfFL9N19CvSs2_cRhU4tm9trBfLmklF7Y59qTe4EWBRBN8UQYB-QaGk5hX-rl_Dg"
+   "sig": "7W9Lf1CjDrS0DAQHjtFpKdQqEUoa9UST02LfvY_bnunAErtFKqJ-5y3CA42zfTyl0J_BlDn3NW9_CSKGi2f5Dw"
   }
  ],
  "hashes": [
-  "sha256:5912be441cd528ccd4bf16b7e71350c5b52bc32f577820a08d9a961c3d911afa",
-  "sha256:1be2eaf96381669aa904098c141f945abe7a11910313e61f76254bee6b9ed0d9",
-  "sha256:7697567412a179d0cfade57a1475b3d6875b2cec74b36053f9630bf50701d08c",
-  "sha256:84615875d678bc4a0bdc14798f4c14771b7d45efbc32514889001a06e09220ad"
+  "sha256:e0ca877cd6afa315a2ce6d48d1023fb1c9baf4055bef0d45b8603df3f9393dc5",
+  "sha256:15384370c97394ad5758035b6dd43a1972de73ebf907b93502eabe6423ef7209",
+  "sha256:29fea47c0615722e505cd9e2cddbb9f5042d912748ab759121d7ca724e392dd3",
+  "sha256:08a7c5240b5d8dcae95211cd26a0a63da5cc16294030c7e22f702cd08d5f5457"
  ]
 }

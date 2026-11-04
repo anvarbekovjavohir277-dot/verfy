@@ -2593,6 +2593,238 @@
    }
   },
   {
+   "name": "after outside text: a network call asks",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "network",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: curl asks",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "curl https://example.org/x"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "shell",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: a message asks",
+   "action": {
+    "tool": "send_message",
+    "arguments": {
+     "to": "a@b.co",
+     "body": "hi"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "message",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: a delete asks",
+   "action": {
+    "tool": "delete_file",
+    "arguments": {
+     "path": "notes.txt"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "file_delete",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: deny mode denies",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "deny"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "deny",
+    "kind": "network",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: editing a file is fine",
+   "action": {
+    "tool": "Edit",
+    "arguments": {
+     "file_path": "notes.txt",
+     "old_string": "a",
+     "new_string": "b"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "file_write",
+    "rules": []
+   }
+  },
+  {
+   "name": "after outside text: a local command is fine",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "npm test"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "shell",
+    "rules": []
+   }
+  },
+  {
+   "name": "after outside text: a trusted tool is fine",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    },
+    "tools": {
+     "trust": [
+      "fetch"
+     ]
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "network",
+    "rules": []
+   }
+  },
+  {
+   "name": "clean session: a network call is fine",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {},
+   "expect": {
+    "verdict": "allow",
+    "kind": "network",
+    "rules": []
+   }
+  },
+  {
+   "name": "switched off: a network call is fine",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {},
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "network",
+    "rules": []
+   }
+  },
+  {
    "name": "deny listed tool",
    "action": {
     "tool": "delete_repo",

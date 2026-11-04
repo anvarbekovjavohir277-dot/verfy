@@ -115,7 +115,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.9.1" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.10.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -156,6 +156,16 @@ verfy team status
 ```
 
 Devices enrolled with 0.8.0 or later upload on their own: after the hook or the gateway writes a receipt, Verfy starts `verfy sync` in the background, at most every five minutes, and writes what happened to `~/.verfy/sync.log`. Devices enrolled earlier keep uploading only with `verfy sync` until you run `verfy team auto-sync on`. Only the public key is sent at enrollment. The device token is stored in `~/.verfy/team.json` (0600). Receipts are uploaded exactly as signed; they contain only hashes of arguments unless you enabled `receipts.include_args`, in which case `sync` needs `--allow-args`.
+
+## After the agent reads outside text
+
+A web page or a tool's answer can carry instructions for the agent. This setting makes what can do harm afterwards wait for a person:
+
+```json
+{ "session": { "after_outside_text": "ask" } }
+```
+
+Once a session has read outside text (a network call, `WebSearch`, or any MCP tool you have not listed in `tools.trust`), network calls, messages, payments and deletes get `ask` (or `deny`), rule VFY-SESSION-001. Editing files and running tests go on. No model reads the text: Verfy only notices the order of events. It is off by default; the `strict` template sets `deny`.
 
 ## Policy
 

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, Callable, IO
 
 from .imports import blocked_tools
+from . import sessions
 from . import team as teamlib
 from ._util import redact_output
 from .lock import LockError, load_lock, pin, safe_name, save_seen, server_pins, update
@@ -84,6 +85,7 @@ class Gateway:
         self.client_caps: dict = {}
         self.spent = spent_today(read_ledger(ledger_path))
         self.child: subprocess.Popen | None = None
+        self.outside: str | None = None  # the first tool that brought outside text into this session
         self.server_lock = threading.Lock()
         self.team_transport = team_transport
         self.poll_seconds = poll_seconds
@@ -193,12 +195,15 @@ class Gateway:
         args = params.get("arguments") or {}
         action = {"server": self.server, "tool": name, "arguments": args}
         meta = self.tool_meta.get(name)
-        decision = check(action, self.policy, {"spent_today": self.spent, "tool": meta, "known_tools": list(self.tool_meta)})
+        decision = check(action, self.policy, {"spent_today": self.spent, "tool": meta, "known_tools": list(self.tool_meta), "untrusted": self.outside})
         if name in self.imported:
             f = self.imported[name]
             decision["findings"] = [{"rule": "VFY-IMP-001", "verdict": "deny", "message": f"`{name}` is rated high by {f['source']} ({f['rule']}): {f['message'][:200]}"}, *decision.get("findings", [])]
             decision["verdict"] = "deny"
         v = decision["verdict"]
+        # what a server answers is outside text, unless the policy trusts that tool
+        if v != "deny" and not self.outside and not sessions.trusted(self.policy, f"{self.server}/{name}", name):
+            self.outside = f"{self.server}/{name}"
         if v == "allow":
             self._forward(msg, action, decision)
         elif v == "deny":

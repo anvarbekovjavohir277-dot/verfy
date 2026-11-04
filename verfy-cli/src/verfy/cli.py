@@ -1148,7 +1148,7 @@ def cmd_hook(args) -> int:
         else:
             print(f"Added `{hooks.PRE_TOOL_COMMAND}` to {path}.")
         return 0
-    return hooks.run_hook(args.event, record=_hook_record, get_policy=_hook_policy, fail_mode=_hook_fail_mode)
+    return hooks.run_hook(args.event, record=_hook_record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
 
 
 # ---------------------------------------------------------------- team

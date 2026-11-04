@@ -100,5 +100,11 @@
  },
  "lock": {
   "on_new": "ask"
+ },
+ "session": {
+  "after_outside_text": "off",
+  "sources": [
+   "WebSearch"
+  ]
  }
 }

@@ -17,7 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from verfy import discover, hook, lock, team  # noqa: E402
+from verfy import discover, hook, lock, sessions, team  # noqa: E402
 from verfy.cli import main as cli_main  # noqa: E402
 from verfy.mcp_client import MCPError  # noqa: E402
 from verfy.policy import load_policy  # noqa: E402
@@ -461,6 +461,68 @@ class RollbackTests(unittest.TestCase):
             self.assertEqual(discover.pin_package(written, "1.2.3", ecosystem), want)
         self.assertIsNone(discover.package_in({"command": "node", "args": ["server.js"]}))
         self.assertIsNone(discover.package_in({"url": "https://x"}))
+
+
+class SessionTests(unittest.TestCase):
+    """Claude Code starts the hook as a new process for every call: what a session read has to survive between them."""
+
+    POLICY = {"session": {"after_outside_text": "ask"}}
+
+    def call(self, tool, args, session="s1", policy=None):
+        pol = load_policy({"home": "/home/you", "workspace": "/home/you/project", **(self.POLICY if policy is None else policy)})
+        out = io.StringIO()
+        payload = {"tool_name": tool, "tool_input": args, "session_id": session, "cwd": "/home/you/project"}
+        hook.run_hook("pre-tool-use", stdin=io.StringIO(json.dumps(payload)), stdout=out, get_policy=lambda cwd: pol, record=None, home=self.home)
+        text = out.getvalue().strip()
+        return json.loads(text)["hookSpecificOutput"] if text else None
+
+    def setUp(self):
+        self.home = tmpdir(self)
+
+    def test_after_a_web_page_a_network_call_needs_a_person(self):
+        self.assertIsNone(self.call("Bash", {"command": "curl https://example.org/a"}, session="clean"))
+        self.call("WebFetch", {"url": "https://example.org", "prompt": "read"})
+        out = self.call("Bash", {"command": "curl -d @notes.txt https://example.org/b"})
+        self.assertEqual(out["permissionDecision"], "ask")
+        self.assertIn("VFY-SESSION-001", out["permissionDecisionReason"])
+        self.assertIn("fetch_url", out["permissionDecisionReason"])
+
+    def test_ordinary_work_goes_on(self):
+        self.call("WebFetch", {"url": "https://example.org", "prompt": "read"})
+        self.assertIsNone(self.call("Edit", {"file_path": "/home/you/project/a.py", "old_string": "a", "new_string": "b"}))
+        self.assertIsNone(self.call("Bash", {"command": "npm test"}))
+
+    def test_another_session_is_not_affected(self):
+        self.call("WebFetch", {"url": "https://example.org", "prompt": "read"})
+        self.assertIsNone(self.call("WebFetch", {"url": "https://example.org", "prompt": "read"}, session="s2"))
+
+    def test_an_mcp_tool_counts_as_outside_text_unless_it_is_trusted(self):
+        self.call("mcp__docs__search", {"q": "x"})
+        self.assertEqual(self.call("WebFetch", {"url": "https://example.org", "prompt": "read"})["permissionDecision"], "ask")
+        policy = {**self.POLICY, "tools": {"trust": ["docs/search"]}}
+        self.call("mcp__docs__search", {"q": "x"}, session="s2", policy=policy)
+        self.assertIsNone(self.call("WebFetch", {"url": "https://example.org", "prompt": "read"}, session="s3", policy=policy))
+
+    def test_it_is_off_unless_chosen_and_keeps_no_arguments(self):
+        self.call("WebFetch", {"url": "https://example.org/secret-page", "prompt": "read"}, policy={})
+        self.assertFalse((self.home / "sessions").exists())
+        self.call("WebFetch", {"url": "https://example.org/secret-page", "prompt": "read"})
+        files = list((self.home / "sessions").glob("*.json"))
+        self.assertEqual(len(files), 1)
+        self.assertNotIn("secret-page", files[0].read_text("utf-8"))
+        self.assertNotIn("s1", files[0].name)
+
+    def test_old_sessions_are_cleaned_up(self):
+        sessions.mark(self.home, "old", "WebFetch", now=1000.0)
+        old = list((self.home / "sessions").glob("*.json"))[0]
+        os.utime(old, (1000.0, 1000.0))
+        sessions.mark(self.home, "new", "WebFetch", now=1000.0 + sessions.KEEP_SECONDS + 1)
+        self.assertFalse(old.exists())
+        self.assertEqual(sessions.source_of(self.home, "new"), "WebFetch")
+
+    def test_a_bad_setting_is_refused(self):
+        with self.assertRaises(ValueError):
+            load_policy({"session": {"after_outside_text": "maybe"}})
 
 
 class ConfigScanTests(unittest.TestCase):

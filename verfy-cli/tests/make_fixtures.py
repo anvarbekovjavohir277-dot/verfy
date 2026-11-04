@@ -190,7 +190,19 @@ SECRET_CASES = [
 
 WIN = {"home": "C:\\Users\\you", "workspace": "C:\\Users\\you\\project"}
 
+AFTER = {"session": {"after_outside_text": "ask"}}
+WEB = {"untrusted": "WebFetch"}
 POLICY_CASES = [
+    ("after outside text: a network call asks", A("fetch", {"url": "https://example.org"}), AFTER, WEB),
+    ("after outside text: curl asks", S("curl https://example.org/x"), AFTER, WEB),
+    ("after outside text: a message asks", A("send_message", {"to": "a@b.co", "body": "hi"}), AFTER, WEB),
+    ("after outside text: a delete asks", A("delete_file", {"path": "notes.txt"}), AFTER, WEB),
+    ("after outside text: deny mode denies", A("fetch", {"url": "https://example.org"}), {"session": {"after_outside_text": "deny"}}, WEB),
+    ("after outside text: editing a file is fine", A("Edit", {"file_path": "notes.txt", "old_string": "a", "new_string": "b"}), AFTER, WEB),
+    ("after outside text: a local command is fine", S("npm test"), AFTER, WEB),
+    ("after outside text: a trusted tool is fine", A("fetch", {"url": "https://example.org"}), {**AFTER, "tools": {"trust": ["fetch"]}}, WEB),
+    ("clean session: a network call is fine", A("fetch", {"url": "https://example.org"}), AFTER, {}),
+    ("switched off: a network call is fine", A("fetch", {"url": "https://example.org"}), {}, WEB),
     ("deny listed tool", A("delete_repo", {"name": "x"}, server="github"), {"tools": {"deny": ["github/delete_*"]}}),
     ("ask listed tool", A("merge_pr", {"n": 1}, server="github"), {"tools": {"ask": ["merge_pr"]}}),
     ("trusted tool skips rules", A("Bash", {"command": "sudo apt update"}), {"tools": {"trust": ["Bash"]}}),
@@ -223,9 +235,10 @@ def main() -> None:
         r = check(action, dict(POLICY), ctx)
         out.append({"name": name, "action": action, "policy": {}, "context": ctx,
                     "expect": {"verdict": r["verdict"], "kind": r["kind"], "rules": sorted({f["rule"] for f in r["findings"]})}})
-    for name, action, pol in POLICY_CASES:
-        r = check(action, {**POLICY, **pol}, {})
-        out.append({"name": name, "action": action, "policy": pol, "context": {},
+    for name, action, pol, *rest in POLICY_CASES:
+        ctx = rest[0] if rest else {}
+        r = check(action, {**POLICY, **pol}, ctx)
+        out.append({"name": name, "action": action, "policy": pol, "context": ctx,
                     "expect": {"verdict": r["verdict"], "kind": r["kind"], "rules": sorted({f["rule"] for f in r["findings"]})}})
     fx = ROOT / "tests" / "fixtures"
     fx.mkdir(parents=True, exist_ok=True)

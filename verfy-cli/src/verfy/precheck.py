@@ -814,8 +814,9 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
     """Judge one agent action.
 
     ``context`` may carry ``spent_today`` (for the daily budget), ``tool`` (the
-    scan result for this tool: ``{"critical": bool, "pin": "ok|new|changed"}``)
-    and ``known_tools`` (names the server listed; anything else is denied)."""
+    scan result for this tool: ``{"critical": bool, "pin": "ok|new|changed"}``),
+    ``known_tools`` (names the server listed; anything else is denied) and
+    ``untrusted`` (what brought outside text into this session, see sessions.py)."""
     complete = policy and all(k in policy for k in DEFAULT_POLICY) and policy.get("home") and policy.get("workspace")
     pol = policy if complete else load_policy(policy)
     ctx = _Ctx(pol)
@@ -915,6 +916,9 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
                     out.append(_f("VFY-SEC-001", "deny", f"Would send a {s['label']} out of this computer (in `{path_ or 'arguments'}`)."))
                 else:
                     out.append(_f("VFY-SEC-001", "ask", f"Contains a {s['label']} (in `{path_ or 'arguments'}`)."))
+        after = (pol.get("session") or {}).get("after_outside_text", "off")
+        if context.get("untrusted") and after in ("ask", "deny") and (network or kind in ("network", "message", "payment", "file_delete")):
+            out.append(_f("VFY-SESSION-001", after, f"This session read outside text ({context['untrusted']}), which can carry instructions, so a person has to approve this."))
 
     for r in pol.get("rules", []):
         if not name_match(r.get("tool", "*"), full) and not name_match(r.get("tool", "*"), tool):
@@ -938,7 +942,7 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
         findings.append(f)
     findings.sort(key=lambda f: -VERDICT_RANK[f["verdict"]])
     verdict = findings[0]["verdict"] if findings else "allow"
-    return {"v": VERSION, "verdict": verdict, "kind": kind, "tool": full, "findings": findings}
+    return {"v": VERSION, "verdict": verdict, "kind": kind, "tool": full, "findings": findings, "reaches_network": bool(network)}
 
 
 def payment_amount(args: dict) -> float | None:

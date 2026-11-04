@@ -1043,6 +1043,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
           else out.push(F("VFY-SEC-001", "ask", "Contains a " + s.label + " (in `" + (pt[0] || "arguments") + "`)."));
         });
       });
+      var after = (pol.session || {}).after_outside_text || "off";
+      if (context.untrusted && (after === "ask" || after === "deny") && (network || has(["network", "message", "payment", "file_delete"], kind))) {
+        out.push(F("VFY-SESSION-001", after, "This session read outside text (" + context.untrusted + "), which can carry instructions, so a person has to approve this."));
+      }
     }
     (pol.rules || []).forEach(function (r) {
       var tp = r.tool || "*";
