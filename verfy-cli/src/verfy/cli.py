@@ -24,7 +24,7 @@ from .gateway import Gateway, verfy_home
 from .mcp_client import MCPError, expand, list_tools, list_tools_http
 from .policy import DEFAULT_POLICY, TEMPLATES, load_policy, policy_digest
 from .precheck import check
-from .receipts import Key, Ledger, key_id, public_from, read_ledger, receipt_hash, verify_ledger
+from .receipts import Key, Ledger, key_id, public_from, read_ledger, receipt_hash, salted_digest, verify_ledger
 from .scanner import scan, tool_pin
 
 EXIT = {"allow": 0, "ask": 1, "deny": 2}
@@ -523,6 +523,15 @@ def cmd_ledger_verify(args) -> int:
         for e in res["errors"]:
             print(f"  #{e['index']}  {e['error']}")
     return 0 if res["ok"] else 1
+
+
+def cmd_ledger_hash(args) -> int:
+    try:
+        value = json.loads(args.value)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"verfy ledger hash: not valid JSON: {e}") from None
+    print(salted_digest(value, get_key(args.key).hash_salt()))
+    return 0
 
 
 def cmd_ledger_show(args) -> int:
@@ -1317,6 +1326,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--ledger")
     s.add_argument("-n", type=int, default=20)
     s.set_defaults(fn=cmd_ledger_show)
+    s = lsub.add_parser("hash", help="the hash this machine records for arguments or a result, to compare with a receipt")
+    s.add_argument("value", help="the arguments or result as JSON")
+    s.add_argument("--key")
+    s.set_defaults(fn=cmd_ledger_hash)
 
     p = sub.add_parser("verify", help="verify the ledger (same as `verfy ledger verify`)")
     p.add_argument("--ledger")

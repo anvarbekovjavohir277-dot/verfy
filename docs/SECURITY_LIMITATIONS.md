@@ -34,6 +34,7 @@ Verfy reduces risk; it does not remove it. These are the limits we know about. N
 
 ## Receipts
 
+- From 0.9.0 the hashes of arguments and results include a secret salt kept in `~/.verfy/key.json`, so Verfy Cloud cannot guess a short argument from its hash. It also means only someone with that file can match known arguments to a receipt (`verfy ledger hash`), and that salt is lost with the file. Receipts written before 0.9.0 have plain hashes.
 - A receipt proves the decision Verfy made, the hashes of arguments and results, and that the record was not changed afterwards. It does not prove what a tool did internally.
 - A device key proves which device signed, not that the device was uncompromised.
 - Whoever holds a device's private key can build a new chain from scratch and sign it, and `verfy verify` will accept that chain on its own: the check catches edits, deletions and reordering inside a chain, not a complete replacement. Receipts already synced to Verfy Cloud cannot be replaced this way, because the server keeps the hash of every stored receipt and refuses different content for the same position (`chain_conflict`). A ledger that was never synced has no outside copy to compare with.

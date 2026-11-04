@@ -18,7 +18,7 @@ from typing import Any, Iterable
 from . import ed25519
 from ._util import redact_value
 from .canonical import canonical_bytes, digest, sha256_hex
-from .fileio import FileLock
+from .fileio import FileLock, atomic_write
 
 VERSION = "verfy.receipt/1"
 
@@ -36,41 +36,53 @@ def key_id(public: bytes) -> str:
 
 
 class Key:
-    """An Ed25519 signing key."""
+    """An Ed25519 signing key, and the secret salt that goes into the hashes of arguments and results."""
 
-    def __init__(self, secret: bytes):
+    def __init__(self, secret: bytes, salt: bytes | None = None, path: Path | None = None):
         self.secret = secret
+        self.salt = salt
+        self.path = path
         self.public = ed25519.public_key(secret)
         self.kid = key_id(self.public)
 
     @classmethod
     def generate(cls) -> "Key":
-        return cls(ed25519.generate_secret())
+        return cls(ed25519.generate_secret(), secrets.token_bytes(32))
 
     def to_json(self, include_secret: bool = True) -> dict:
         d = {"kty": "Ed25519", "kid": self.kid, "public": b64u(self.public)}
         if include_secret:
             d["secret"] = b64u(self.secret)
+            if self.salt:
+                d["hash_salt"] = b64u(self.salt)
         return d
 
     @classmethod
     def from_json(cls, d: dict) -> "Key":
-        k = cls(unb64u(d["secret"]))
+        k = cls(unb64u(d["secret"]), unb64u(d["hash_salt"]) if d.get("hash_salt") else None)
         if d.get("public") and d["public"] != b64u(k.public):
             raise ValueError("key file is corrupt: public key does not match the secret")
         return k
 
     def save(self, path: str | os.PathLike) -> None:
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(self.to_json(), f, indent=2)
-            f.write("\n")
+        atomic_write(path, json.dumps(self.to_json(), indent=2) + "\n", mode=0o600)
 
     @classmethod
     def load(cls, path: str | os.PathLike) -> "Key":
-        return cls.from_json(json.loads(Path(path).read_text("utf-8")))
+        k = cls.from_json(json.loads(Path(path).read_text("utf-8")))
+        k.path = Path(path)
+        return k
+
+    def hash_salt(self) -> bytes | None:
+        """The salt for this key. A key file from before 0.9.0 gets one the first time it signs a receipt, under a lock,
+        because a hook and a gateway can get there together. None only for a key that is not kept in a file."""
+        if self.salt is None and self.path is not None:
+            with FileLock(self.path):
+                saved = Key.load(self.path)
+                self.salt = saved.salt or secrets.token_bytes(32)
+                if saved.salt is None:
+                    self.save(self.path)
+        return self.salt
 
 
 def public_from(value: str | bytes | dict) -> bytes:
@@ -90,6 +102,14 @@ def now_iso() -> str:
 
 def receipt_hash(receipt: dict) -> str:
     return digest(receipt)
+
+
+def salted_digest(value: Any, salt: bytes | None) -> str:
+    """The hash of arguments or a result in a receipt: SHA-256 of the value together with the key's secret salt.
+
+    Receipts go to Verfy Cloud, and a plain hash of a short value such as {"command": "ls"} can be guessed by hashing
+    likely values. The salt never leaves this machine, so the hash says nothing to anyone without it."""
+    return digest(value) if salt is None else digest({"salt": b64u(salt), "value": value})
 
 
 def sign_receipt(body: dict, key: Key) -> dict:
@@ -116,13 +136,13 @@ def verify_receipt(receipt: dict, public: bytes) -> bool:
 
 def build_receipt(*, seq: int, prev: str | None, agent: str, session: str, action: dict, decision: dict,
                   outcome: dict, policy_sha256: str, tool_sha256: str | None = None, include_args: bool = False,
-                  issued_at: str | None = None, rid: str | None = None) -> dict:
+                  issued_at: str | None = None, rid: str | None = None, salt: bytes | None = None) -> dict:
     args = action.get("arguments", {})
     act = {
         "server": action.get("server", ""),
         "tool": action.get("tool", ""),
         "kind": decision.get("kind", "other"),
-        "args_sha256": digest(args),
+        "args_sha256": salted_digest(args, salt),
     }
     if include_args:
         act["args"] = redact_value(args)
@@ -166,10 +186,14 @@ class Ledger:
             return 0, None
         return int(last.get("seq", -1)) + 1, receipt_hash(last)
 
+    def hash(self, value: Any) -> str:
+        """The hash this ledger records for arguments or a result."""
+        return salted_digest(value, self.key.hash_salt())
+
     def append(self, **kw: Any) -> dict:
         with FileLock(self.path):
             self.seq, self.prev = self._tail()
-            body = build_receipt(seq=self.seq, prev=self.prev, **kw)
+            body = build_receipt(seq=self.seq, prev=self.prev, salt=self.key.hash_salt(), **kw)
             r = sign_receipt(body, self.key)
             with open(self.path, "a", encoding="utf-8", newline="\n") as f:
                 f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")

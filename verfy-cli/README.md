@@ -103,7 +103,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.8.1" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.9.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -174,6 +174,8 @@ JSON merged over `src/verfy/data/default_policy.json`. Precedence: `--policy FIL
 ## Receipt format (`verfy.receipt/1`)
 
 One JSON object per line in `~/.verfy/ledger.jsonl`: `v, id, seq, prev, issued_at, agent, session, action{server, tool, kind, args_sha256, args?}, decision{verdict, rules, policy_sha256, approved_by?}, outcome{status, result_sha256}, tool_sha256, kid, sig`. `sig` is Ed25519 over the canonical JSON of all other fields; `prev` is the SHA-256 of the previous receipt. Writes are serialized with an OS file lock, so parallel sessions never fork the chain.
+
+`args_sha256` and `result_sha256` are SHA-256 of the value together with a secret salt kept in `~/.verfy/key.json` (from 0.9.0), so a short argument cannot be guessed from a receipt. `verfy ledger hash '{"command": "ls"}'` prints what this machine records for a value.
 
 ### SCITT signed statements
 

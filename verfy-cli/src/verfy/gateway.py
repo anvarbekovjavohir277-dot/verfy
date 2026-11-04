@@ -33,7 +33,6 @@ from typing import Any, Callable, IO
 from .imports import blocked_tools
 from . import team as teamlib
 from ._util import redact_output
-from .canonical import digest
 from .lock import LockError, load_lock, pin, safe_name, save_seen, server_pins, update
 from .policy import policy_digest
 from .precheck import check, payment_amount
@@ -235,7 +234,7 @@ class Gateway:
         wait = int(self.policy.get("approval_timeout", 120))
         name = f"{self.server}/{action['tool']}"
         try:
-            req = teamlib.request_approval(self.home, self.server, action["tool"], decision["kind"], digest(action["arguments"]),
+            req = teamlib.request_approval(self.home, self.server, action["tool"], decision["kind"], self.ledger.hash(action["arguments"]),
                                            decision["findings"], wait, transport=self.team_transport)
             self.log(f"ASK {name} -> waiting up to {wait}s for your team to approve it in the dashboard")
             deadline = time.monotonic() + wait + 5
@@ -306,7 +305,7 @@ class Gateway:
                 _, action, decision = p
                 result = msg.get("result")
                 failed = "error" in msg or (isinstance(result, dict) and result.get("isError") is True)
-                r = self._receipt(action, decision, {"status": "error" if failed else "ok", "result_sha256": digest(result if result is not None else msg.get("error"))})
+                r = self._receipt(action, decision, {"status": "error" if failed else "ok", "result_sha256": self.ledger.hash(result if result is not None else msg.get("error"))})
                 if decision["kind"] == "payment" and not failed:
                     self.spent += payment_amount(action["arguments"]) or 0
                 self.log(f"{decision['verdict'].upper()} {self.server}/{action['tool']} -> {r['outcome']['status']} (receipt #{r['seq']})")

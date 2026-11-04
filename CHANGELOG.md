@@ -2,6 +2,11 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.9.0 (2026-11-04)
+
+- **Salted hashes in receipts.** Receipts hold a hash of a call's arguments and result, not the values, and that is what reaches Verfy Cloud. A plain SHA-256 of a short argument such as `{"command": "ls"}` can be guessed by hashing likely values, so anyone with the database could have read it back. From this version the hash is SHA-256 of the value together with a secret salt that stays in `~/.verfy/key.json`, so it says nothing without that file. The format is unchanged (`args_sha256` and `result_sha256`, still `sha256:…`), signatures and chains work as before, and a key file without a salt gets one the first time it signs. Receipts written before this version keep their plain hashes. Hashes sent to the approval queue are salted too.
+- `verfy ledger hash JSON` prints the hash this machine records for a value, so you can still match known arguments to a receipt. Someone without your `key.json` cannot.
+
 ## 0.8.1 (2026-11-04)
 
 - The website moved to https://verfy.dev. `verfy update`, the installers, the package links and the docs use it. The old address leads there, and Verfy Cloud's API still answers at it, so devices enrolled there keep working.

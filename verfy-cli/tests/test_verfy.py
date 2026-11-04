@@ -11,7 +11,9 @@ import sys
 import tempfile
 import threading
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
@@ -22,7 +24,7 @@ from verfy.cli import main as cli_main  # noqa: E402
 from verfy.gateway import Gateway  # noqa: E402
 from verfy.lock import load_lock, server_pins  # noqa: E402
 from verfy.precheck import parse_shell  # noqa: E402
-from verfy.receipts import Key, Ledger, read_ledger, sign_receipt, unb64u, verify_ledger, verify_receipt  # noqa: E402
+from verfy.receipts import Key, Ledger, b64u, read_ledger, sign_receipt, unb64u, verify_ledger, verify_receipt  # noqa: E402
 
 FX = ROOT / "tests" / "fixtures"
 NODE = shutil.which("node")
@@ -394,6 +396,63 @@ class CLI(unittest.TestCase):
         self.assertEqual(wrapped["web"], {"url": "https://x"})
         code, out, _ = self.run_cli("ledger", "verify", home=home)
         self.assertEqual(code, 0)
+
+
+
+class SaltedHashes(unittest.TestCase):
+    """Receipts go to Verfy Cloud: a hash there must not let anyone guess a short argument."""
+
+    def setUp(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.dir = Path(d.name)
+
+    def receipt(self, key, args):
+        led = Ledger(self.dir / f"{key.kid}.jsonl", key)
+        return led.append(agent="a", session="s", action={"server": "s", "tool": "Bash", "arguments": args},
+                          decision={"verdict": "allow", "findings": []}, outcome={"status": "ok", "result_sha256": None}, policy_sha256="x")
+
+    def test_a_short_argument_cannot_be_guessed_from_the_receipt(self):
+        args = {"command": "ls"}
+        one, two = Key.generate(), Key.generate()
+        first = self.receipt(one, args)["action"]["args_sha256"]
+        self.assertRegex(first, r"^sha256:[0-9a-f]{64}$")  # the format Verfy Cloud accepts
+        self.assertNotEqual(first, digest(args))
+        self.assertEqual(self.receipt(one, args)["action"]["args_sha256"], first)  # the same call hashes the same here
+        self.assertNotEqual(self.receipt(two, args)["action"]["args_sha256"], first)  # and differently on another machine
+
+    def test_the_salt_stays_on_this_machine(self):
+        key = Key.generate()
+        salt = b64u(key.salt)
+        self.assertNotIn(salt, json.dumps(key.to_json(False)))
+        self.assertNotIn(salt, json.dumps(self.receipt(key, {"a": 1})))
+        self.assertEqual(Key.from_json(key.to_json()).salt, key.salt)
+
+    def test_a_key_from_before_the_salt_gets_one_when_it_first_signs_and_keeps_it(self):
+        path = self.dir / "key.json"
+        old = Key(bytes(range(1, 33)))
+        old.save(path)
+        before = path.read_text("utf-8")
+        self.assertNotIn("hash_salt", before)
+        key = Key.load(path)
+        self.assertEqual(path.read_text("utf-8"), before)  # verifying with a key does not change it
+        first = self.receipt(key, {"a": 1})["action"]["args_sha256"]
+        self.assertNotEqual(first, digest({"a": 1}))
+        again = Key.load(path)
+        self.assertEqual((again.kid, again.secret), (old.kid, old.secret))
+        self.assertEqual(self.receipt(again, {"a": 1})["action"]["args_sha256"], first)
+        if os.name == "posix":
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+
+    def test_ledger_hash_lets_the_owner_match_known_arguments_to_a_receipt(self):
+        home = self.dir / "home"
+        key = Key.generate()
+        key.save(home / "key.json")
+        recorded = self.receipt(Key.load(home / "key.json"), {"command": "ls"})["action"]["args_sha256"]
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, {"VERFY_HOME": str(home)}), redirect_stdout(out):
+            self.assertEqual(cli_main(["ledger", "hash", '{"command": "ls"}']), 0)
+        self.assertEqual(out.getvalue().strip(), recorded)
 
 
 if __name__ == "__main__":
