@@ -448,7 +448,7 @@ class CLI(unittest.TestCase):
         code, out, _ = self.run_cli("wrap", str(cfg), home=home)
         wrapped = json.loads(out)["mcpServers"]
         self.assertEqual(wrapped["fs"]["args"][:4], ["proxy", "--name", "fs", "--"])
-        self.assertEqual(wrapped["web"], {"url": "https://x"})
+        self.assertEqual(wrapped["web"]["args"][-3:], ["bridge", "--url", "https://x"])
         code, out, _ = self.run_cli("ledger", "verify", home=home)
         self.assertEqual(code, 0)
 

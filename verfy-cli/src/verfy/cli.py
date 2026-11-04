@@ -14,6 +14,7 @@ from pathlib import Path
 
 from . import __version__
 from . import agentfiles
+from . import bridge as bridges
 from . import imports
 from . import discover as cfgscan
 from . import hook as hooks
@@ -465,6 +466,36 @@ def cmd_proxy(args) -> int:
     return gw.run()
 
 
+def cmd_bridge(args) -> int:
+    try:
+        return bridges.Bridge(args.url, bridges.headers_from_env()).run()
+    except MCPError as e:
+        print(f"verfy bridge: {e}", file=sys.stderr)
+        return 3
+
+
+def _bridge_headers(spec: dict) -> dict[str, str]:
+    """A remote server's headers as written in its config, with ${VAR} left for the bridge to fill in."""
+    headers = {str(k): str(v) for key in ("headers", "http_headers") for k, v in (spec.get(key) or {}).items()}
+    headers.update({str(k): "${" + str(var) + "}" for k, var in (spec.get("env_http_headers") or {}).items()})
+    if spec.get("bearer_token_env_var"):
+        headers["Authorization"] = "Bearer ${" + str(spec["bearer_token_env_var"]) + "}"
+    return headers
+
+
+def _wrap_remote(spec: dict, name: str, exe: str, extra: list[str]) -> None:
+    """Turn a remote server's config entry into the gateway in front of a bridge to it. Headers go to the environment:
+    a key must not be on a command line."""
+    url = cfgscan.server_url(spec)
+    headers = _bridge_headers(spec)
+    for key in ("url", "serverUrl", "httpUrl", "type", "transport", "headers", "http_headers", "env_http_headers", "bearer_token_env_var"):
+        spec.pop(key, None)
+    spec["command"] = exe
+    spec["args"] = ["proxy", "--name", name, *extra, "--", exe, "bridge", "--url", str(url)]
+    if headers:
+        spec["env"] = {**(spec.get("env") or {}), bridges.HEADERS_ENV: json.dumps(headers)}
+
+
 def cmd_wrap(args) -> int:
     path = Path(args.config)
     cfg = json.loads(path.read_text("utf-8"))
@@ -473,15 +504,26 @@ def cmd_wrap(args) -> int:
         raise SystemExit("verfy wrap: no `mcpServers` in that file")
     exe = shutil.which("verfy") or "verfy"
     wrapped = []
+    skipped = []
     for name, spec in cfg[key].items():
-        if not isinstance(spec, dict) or "command" not in spec:
+        if not isinstance(spec, dict):
+            continue
+        extra = ["--policy", args.policy] if args.policy else []
+        if "command" not in spec:
+            if cfgscan.server_url(spec):
+                if str(spec.get("type") or spec.get("transport")).lower() == "sse":
+                    skipped.append(name)  # the older SSE transport: the bridge speaks Streamable HTTP
+                    continue
+                _wrap_remote(spec, name, exe, extra)
+                wrapped.append(name)
             continue
         if spec["command"] in ("verfy", exe) or Path(spec["command"]).name == "verfy":
             continue
-        extra = ["--policy", args.policy] if args.policy else []
         spec["args"] = ["proxy", "--name", name, *extra, "--", spec["command"], *spec.get("args", [])]
         spec["command"] = exe
         wrapped.append(name)
+    if skipped:
+        print(f"[verfy] left as they are, the older SSE transport is not supported: {', '.join(skipped)}", file=sys.stderr)
     out = json.dumps(cfg, indent=2, ensure_ascii=False) + "\n"
     if args.write:
         backup = path.with_suffix(path.suffix + ".verfy-backup")
@@ -1308,6 +1350,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lock", help="verfy.lock path (default ./verfy.lock if present, else ~/.verfy/verfy.lock)")
     p.add_argument("--key")
     p.set_defaults(fn=cmd_proxy)
+
+    p = sub.add_parser("bridge", help="a stdio MCP server that forwards to a remote one; `verfy wrap` sets it up behind the gateway")
+    p.add_argument("--url", required=True, help="the remote server's Streamable HTTP address")
+    p.set_defaults(fn=cmd_bridge)
 
     p = sub.add_parser("wrap", help="put every server in an MCP config behind the gateway")
     p.add_argument("config")

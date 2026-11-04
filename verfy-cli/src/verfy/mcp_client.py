@@ -91,29 +91,48 @@ def _events(resp) -> Iterator[str]:
         yield "\n".join(data)
 
 
-def list_tools_http(url: str, headers: Mapping[str, str] | None = None, timeout: float = 30.0) -> dict:
-    """Run the MCP handshake with a remote server over Streamable HTTP and return ``{"server": info, "tools": [...]}``."""
-    host = urllib.parse.urlsplit(url).hostname
-    if urllib.parse.urlsplit(url).scheme not in ("http", "https") or not host:
-        raise MCPError("the server's url must start with https:// or http://")
-    opener = urllib.request.build_opener(_NoRedirect)
-    sent = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": "verfy", **(headers or {})}
+class HttpSession:
+    """One Streamable HTTP session with a remote server: sends the headers, keeps the session id, follows no redirect."""
 
-    def open_(method: str, body: dict | None = None):
+    def __init__(self, url: str, headers: Mapping[str, str] | None = None, timeout: float = 30.0):
+        self.url = url
+        self.host = urllib.parse.urlsplit(url).hostname
+        if urllib.parse.urlsplit(url).scheme not in ("http", "https") or not self.host:
+            raise MCPError("the server's url must start with https:// or http://")
+        self.timeout = timeout
+        self.opener = urllib.request.build_opener(_NoRedirect)
+        self.sent = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", "User-Agent": "verfy", **(headers or {})}
+
+    def open(self, method: str, body: dict | None = None):
         data = None if body is None else json.dumps(body).encode()
         try:
-            return opener.open(urllib.request.Request(url, data=data, method=method, headers=sent), timeout=timeout)
+            resp = self.opener.open(urllib.request.Request(self.url, data=data, method=method, headers=self.sent), timeout=self.timeout)
         except urllib.error.HTTPError as e:
             raise MCPError(_http_problem(e)) from None
         except (urllib.error.URLError, OSError) as e:  # timeouts are OSErrors too
-            raise MCPError(f"cannot reach {host}: {getattr(e, 'reason', None) or e}") from None
+            raise MCPError(f"cannot reach {self.host}: {getattr(e, 'reason', None) or e}") from None
         except ValueError:  # http.client's message would quote the header, which may be a key
             raise MCPError("the url or a header in the config is not valid (for example a line break in it)") from None
+        if resp.headers.get("Mcp-Session-Id"):
+            self.sent["Mcp-Session-Id"] = resp.headers["Mcp-Session-Id"]
+        return resp
+
+    def close(self) -> None:
+        """End the session; a server may refuse, which is fine."""
+        if "Mcp-Session-Id" in self.sent:
+            try:
+                self.open("DELETE").close()
+            except MCPError:
+                pass
+
+
+def list_tools_http(url: str, headers: Mapping[str, str] | None = None, timeout: float = 30.0) -> dict:
+    """Run the MCP handshake with a remote server over Streamable HTTP and return ``{"server": info, "tools": [...]}``."""
+    http = HttpSession(url, headers, timeout)
+    host = http.host
 
     def call(mid: int, method: str, params: dict) -> dict:
-        with open_("POST", {"jsonrpc": "2.0", "id": mid, "method": method, "params": params}) as resp:
-            if resp.headers.get("Mcp-Session-Id"):
-                sent["Mcp-Session-Id"] = resp.headers["Mcp-Session-Id"]
+        with http.open("POST", {"jsonrpc": "2.0", "id": mid, "method": method, "params": params}) as resp:
             try:
                 for m in _messages(resp):
                     if isinstance(m, dict) and m.get("id") == mid and "method" not in m:
@@ -127,8 +146,8 @@ def list_tools_http(url: str, headers: Mapping[str, str] | None = None, timeout:
 
     try:
         init = call(1, "initialize", {"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "verfy-scan", "version": "0.2.0"}})
-        sent["MCP-Protocol-Version"] = str(init.get("protocolVersion") or PROTOCOL)
-        open_("POST", {"jsonrpc": "2.0", "method": "notifications/initialized"}).close()
+        http.sent["MCP-Protocol-Version"] = str(init.get("protocolVersion") or PROTOCOL)
+        http.open("POST", {"jsonrpc": "2.0", "method": "notifications/initialized"}).close()
         tools: list = []
         cursor = None
         mid = 2
@@ -141,11 +160,7 @@ def list_tools_http(url: str, headers: Mapping[str, str] | None = None, timeout:
                 break
         return {"server": init.get("serverInfo", {}), "tools": tools}
     finally:
-        if "Mcp-Session-Id" in sent:
-            try:
-                open_("DELETE").close()  # end the session; a server may refuse, which is fine
-            except MCPError:
-                pass
+        http.close()
 
 
 def list_tools(command: list[str], timeout: float = 30.0, env: dict | None = None) -> dict:

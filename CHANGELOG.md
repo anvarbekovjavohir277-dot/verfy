@@ -2,6 +2,10 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## Unreleased
+
+- **The gateway guards remote MCP servers too.** `verfy wrap` now puts a remote server (a `url` in the config) behind the gateway, through a new `verfy bridge` that speaks stdio on one side and Streamable HTTP on the other, so rules, the lock, redaction and receipts apply to it as they do to a local server. Headers move to the server's `env`, so a key is not on a command line; `${VAR}` is filled in when the bridge starts. Verfy does not follow redirects. Not covered yet: the older SSE transport (`verfy wrap` leaves those servers alone and says so), servers that sign in with OAuth in your MCP client (the bridge has only the headers in the config), and messages a server sends outside an answer to a request.
+
 ## 0.9.1 (2026-11-04)
 
 Three contributions from [BryanOnKeys](https://github.com/BryanOnKeys), the first from outside the project. Thank you.

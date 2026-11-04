@@ -40,8 +40,10 @@ verfy update --auto on          # once a day, when you run a verfy command, upda
 
 ```bash
 claude mcp add filesystem -- verfy proxy --name filesystem -- npx -y @modelcontextprotocol/server-filesystem@2025.8.21 ~/project
-verfy wrap ~/.cursor/mcp.json --write      # wrap every server in a config (backup kept)
+verfy wrap ~/.cursor/mcp.json --write      # wrap every server in a config, local and remote (backup kept)
 ```
+
+A remote server goes behind the gateway through `verfy bridge`, which forwards to its Streamable HTTP address. Its headers move to the entry's `env`, so a key is not on a command line. Not covered yet: the older SSE transport, servers that sign in with OAuth in your MCP client, and messages a server sends outside an answer to a request.
 
 The gateway scans each `tools/list` answer, hides poisoned or drifted tools, checks every `tools/call`, can ask the user through MCP elicitation (`"on_ask": "elicit"`), and writes a receipt for every call. Secrets in tool results and resources (API keys, tokens, private keys in the formats the scanner knows) are replaced with `[REDACTED:<rule>]` before the agent reads them; the receipt keeps the hash of the original result. Set `"redact_output": false` to turn this off.
 

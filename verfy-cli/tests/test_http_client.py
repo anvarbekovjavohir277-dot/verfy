@@ -3,8 +3,10 @@ Run from verfy-cli/: ``python -m unittest discover -s tests``."""
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
 import sys
 import threading
 import unittest
@@ -16,6 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from verfy import lock  # noqa: E402
+from verfy.bridge import HEADERS_ENV, Bridge, headers_from_env  # noqa: E402
 from verfy.mcp_client import MCPError, expand, list_tools_http  # noqa: E402
 from test_lock_hook_team import run_cli, tmpdir  # noqa: E402
 
@@ -49,16 +52,19 @@ class FakeRemote(BaseHTTPRequestHandler):
     def do_POST(self):
         s = self.server
         s.seen.append(dict(self.headers))
+        msg = json.loads(self.rfile.read(int(self.headers["Content-Length"])))  # read first: on Windows an unread body resets the connection
         if s.redirect_to:
             return self.answer(307, extra={"Location": s.redirect_to})
         if self.headers.get("Authorization") != TOKEN:
             return self.answer(401, b'{"error": "unauthorized"}')
-        msg = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if msg["method"] == "initialize":
             res = {"protocolVersion": "2025-06-18", "capabilities": {"tools": {}}, "serverInfo": {"name": "fake", "version": "1"}}
             return self.answer(200, json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": res}).encode(), extra={"Mcp-Session-Id": "sess-1"})
         if "id" not in msg:
             return self.answer(202)
+        if msg["method"] == "tools/call":
+            res = {"content": [{"type": "text", "text": "called " + msg["params"]["name"]}]}
+            return self.answer(200, json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": res}).encode())
         if self.headers.get("Mcp-Session-Id") != "sess-1" or self.headers.get("MCP-Protocol-Version") != "2025-06-18":
             return self.answer(400, b'{"error": "no session"}')
         tools = [dict(t) for t in s.tools]
@@ -177,6 +183,126 @@ class RemoteLockCheckTests(unittest.TestCase):
         code, out, _ = run_cli(home, "lock", "check", "--config", str(cfg), "--lock", str(home / "verfy.lock"), "--json")
         self.assertEqual(code, 1)
         self.assertEqual(sorted(r["tool"] for r in json.loads(out)["tools"]), ["fetch", "search"])
+
+
+
+def rpc(mid, method, params=None):
+    return {"jsonrpc": "2.0", "id": mid, "method": method, "params": params or {}}
+
+
+def run_bridge(srv, msgs, headers=None):
+    logs: list[str] = []
+    out = io.BytesIO()
+    inp = io.BytesIO(b"".join(json.dumps(m).encode() + b"\n" for m in msgs))
+    Bridge(srv.url, {"Authorization": TOKEN} if headers is None else headers, inp=inp, out=out, log=logs.append, timeout=5).run()
+    return [json.loads(line) for line in out.getvalue().splitlines()], logs
+
+
+class BridgeTests(unittest.TestCase):
+    def test_forwards_a_session_with_its_key_and_ends_it(self):
+        srv = start(self)
+        got, logs = run_bridge(srv, [
+            rpc(1, "initialize", {"protocolVersion": "2025-06-18"}),
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            rpc(2, "tools/call", {"name": "search", "arguments": {"q": "x"}}),
+        ])
+        by_id = {m.get("id"): m for m in got}
+        self.assertEqual(by_id[1]["result"]["serverInfo"]["name"], "fake")
+        self.assertEqual(by_id[2]["result"]["content"][0]["text"], "called search")
+        self.assertEqual(srv.deleted, "sess-1")
+        self.assertEqual(logs, [])
+
+    def test_passes_on_every_event_of_an_answer(self):
+        srv = start(self)
+        got, _ = run_bridge(srv, [rpc(1, "initialize"), rpc(2, "tools/list")])
+        self.assertIn("notifications/message", [m.get("method") for m in got])
+        self.assertEqual([m["id"] for m in got if "id" in m], [1, 2])
+
+    def test_a_refused_request_gets_an_error_and_the_key_stays_out_of_it(self):
+        srv = start(self)
+        got, logs = run_bridge(srv, [rpc(1, "initialize")], {"Authorization": "Bearer wrong-key"})
+        self.assertEqual(got[0]["id"], 1)
+        self.assertIn("401", got[0]["error"]["message"])
+        self.assertNotIn("wrong-key", json.dumps(got) + " ".join(logs))
+
+    def test_a_redirect_is_not_followed(self):
+        srv, other = start(self), start(self)
+        srv.redirect_to = other.url
+        got, _ = run_bridge(srv, [rpc(1, "initialize")])
+        self.assertIn("redirected", got[0]["error"]["message"])
+        self.assertEqual(other.seen, [])
+
+    def test_headers_come_from_the_environment_with_variables_filled_in(self):
+        env = {HEADERS_ENV: json.dumps({"Authorization": "Bearer ${MCP_TOKEN}"}), "MCP_TOKEN": "abc"}
+        self.assertEqual(headers_from_env(env), {"Authorization": "Bearer abc"})
+        self.assertEqual(headers_from_env({}), {})
+        with self.assertRaises(MCPError):
+            headers_from_env({HEADERS_ENV: json.dumps({"Authorization": "Bearer ${MISSING}"})})
+
+
+class WrapRemoteTests(unittest.TestCase):
+    def wrap(self, servers):
+        home = tmpdir(self)
+        path = home / "mcp.json"
+        path.write_text(json.dumps({"mcpServers": servers}), "utf-8")
+        code, _, err = run_cli(home, "wrap", str(path), "--write")
+        self.assertEqual(code, 0)
+        return json.loads(path.read_text("utf-8"))["mcpServers"], err
+
+    def test_a_remote_server_goes_behind_the_gateway_with_its_key_off_the_command_line(self):
+        servers, _ = self.wrap({"docs": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer ${MCP_TOKEN}"}}})
+        spec = servers["docs"]
+        self.assertEqual(spec["args"][:3], ["proxy", "--name", "docs"])
+        self.assertEqual(spec["args"][-3:], ["bridge", "--url", "https://mcp.example.com/mcp"])
+        self.assertNotIn("url", spec)
+        self.assertNotIn("headers", spec)
+        self.assertNotIn("MCP_TOKEN", json.dumps(spec["args"]))
+        self.assertEqual(json.loads(spec["env"][HEADERS_ENV]), {"Authorization": "Bearer ${MCP_TOKEN}"})
+
+    def test_codex_headers_are_kept(self):
+        servers, _ = self.wrap({"docs": {"url": "https://mcp.example.com/mcp", "bearer_token_env_var": "TOK", "env_http_headers": {"X-Key": "KEY"}}})
+        self.assertEqual(json.loads(servers["docs"]["env"][HEADERS_ENV]), {"X-Key": "${KEY}", "Authorization": "Bearer ${TOK}"})
+
+    def test_the_older_sse_transport_is_left_alone_and_said_so(self):
+        servers, err = self.wrap({"old": {"type": "sse", "url": "https://mcp.example.com/sse"}})
+        self.assertEqual(servers["old"]["url"], "https://mcp.example.com/sse")
+        self.assertIn("old", err)
+
+
+class GatewayOverBridgeTests(unittest.TestCase):
+    """The real thing: `verfy proxy` starts `verfy bridge` as its server, and a client talks to it over stdio."""
+
+    def session(self, srv, home, *calls):
+        src = str(ROOT / "src")
+        env = {**os.environ, "VERFY_HOME": str(home), "PYTHONPATH": src, HEADERS_ENV: json.dumps({"Authorization": "${MCP_TOKEN}"}), "MCP_TOKEN": TOKEN}
+        run_cli(home, "init", "--updates", "manual", "--no-hook")
+        cmd = [sys.executable, "-m", "verfy", "proxy", "--name", "docs", "--", sys.executable, "-m", "verfy", "bridge", "--url", srv.url]
+        msgs = [rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}),
+                {"jsonrpc": "2.0", "method": "notifications/initialized"}, *calls]
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env, cwd=home)
+        answers = {}
+        for m in msgs:
+            p.stdin.write(json.dumps(m).encode() + b"\n")
+            p.stdin.flush()
+            while "id" in m:
+                got = json.loads(p.stdout.readline())
+                if got.get("id") == m["id"]:
+                    answers[m["id"]] = got
+                    break
+        p.stdin.close()
+        p.wait(timeout=20)
+        p.stdout.close()
+        return answers
+
+    def test_a_remote_tool_call_passes_the_gateway_and_leaves_a_receipt(self):
+        srv, home = start(self), tmpdir(self)
+        got = self.session(srv, home, rpc(2, "tools/list"), rpc(3, "tools/call", {"name": "search", "arguments": {"q": "x"}}))
+        self.assertIn("search", [t["name"] for t in got[2]["result"]["tools"]])
+        self.assertEqual(got[3]["result"]["content"][0]["text"], "called search")
+        receipts = [json.loads(line) for line in (home / "ledger.jsonl").read_text("utf-8").splitlines()]
+        self.assertEqual(receipts[-1]["action"]["server"], "docs")
+        self.assertEqual(receipts[-1]["action"]["tool"], "search")
+        self.assertEqual(receipts[-1]["outcome"]["status"], "ok")
 
 
 if __name__ == "__main__":
