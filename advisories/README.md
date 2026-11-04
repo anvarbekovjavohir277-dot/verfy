@@ -1,6 +1,6 @@
 # Verfy Advisories
 
-Known vulnerabilities in MCP servers and other agent tooling, one [OSV](https://ossf.github.io/osv-schema/) file per advisory. They are published at https://verfy-tech.vercel.app/advisories and in the feed `/api/v1/advisories`.
+Known vulnerabilities in MCP servers and other agent tooling, one [OSV](https://ossf.github.io/osv-schema/) file per advisory. They are published at https://verfy.dev/advisories and in the feed `/api/v1/advisories`.
 
 Advisories are added by pull request to this folder. Anyone can send one.
 

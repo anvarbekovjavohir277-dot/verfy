@@ -1410,7 +1410,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("team", help="Verfy Cloud for your team: enroll, sync, pull policy and locks, propose lock updates")
     tm = p.add_subparsers(dest="team_cmd", metavar="action")
     x = tm.add_parser("enroll", help="register this device's public key with your team")
-    x.add_argument("--url", required=True, help="the Verfy Cloud address, https://verfy-tech.vercel.app")
+    x.add_argument("--url", required=True, help="the Verfy Cloud address, https://verfy.dev")
     x.add_argument("--code", help="one-time enrollment code from Dashboard > Devices")
     x.add_argument("--name", help="device name shown in the dashboard")
     x.add_argument("--key")

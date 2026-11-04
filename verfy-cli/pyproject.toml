@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verfy"
-version = "0.8.0"
+version = "0.8.1"
 description = "Verfy: guard coding-agent tool calls, scan and lock MCP tools, and sign a verifiable receipt for every action."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,9 +23,9 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://verfy-tech.vercel.app"
-Documentation = "https://verfy-tech.vercel.app/docs"
-Changelog = "https://verfy-tech.vercel.app/changelog"
+Homepage = "https://verfy.dev"
+Documentation = "https://verfy.dev/docs"
+Changelog = "https://verfy.dev/changelog"
 Source = "https://github.com/anvarbekovjavohir277-dot/verfy"
 Downloads = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases"
 Issues = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues"

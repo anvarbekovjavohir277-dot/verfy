@@ -4,7 +4,7 @@ Guard coding-agent tool calls, scan and lock MCP tools, and sign a verifiable re
 
 ```bash
 pip install verfy                  # Python ≥ 3.10, no dependencies
-curl -fsSLO https://verfy-tech.vercel.app/install.sh && less install.sh && sh install.sh   # no Python: macOS, Linux (read it, then run it)
+curl -fsSLO https://verfy.dev/install.sh && less install.sh && sh install.sh   # no Python: macOS, Linux (read it, then run it)
 pip install "verfy[fast]"          # optional: faster Ed25519 via `cryptography`
 ```
 
@@ -103,7 +103,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.8.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.8.1" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -127,8 +127,8 @@ verfy verify --ledger receipts.jsonl --pub <key> --kid <chain> [--start-after <h
 ## Verfy Cloud
 
 ```bash
-verfy init --url https://verfy-tech.vercel.app --code atle_…   # set up this machine and connect it (code from Dashboard → Devices)
-verfy team enroll --url https://verfy-tech.vercel.app --code atle_…   # or connect a machine that is already set up
+verfy init --url https://verfy.dev --code atle_…   # set up this machine and connect it (code from Dashboard → Devices)
+verfy team enroll --url https://verfy.dev --code atle_…   # or connect a machine that is already set up
 verfy sync                     # upload new receipts now (they also upload on their own, see below)
 verfy team auto-sync off       # upload only when you run `verfy sync` (on: auto-sync on)
 verfy team pull                # team policy + team-approved locks

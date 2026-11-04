@@ -6,7 +6,7 @@
 
 <img src="docs/assets/verfy-lock-demo.gif" width="494" alt="Verfy lock demo: the approved read_file tool is allowed; after the server quietly adds an instruction to its description, the same call is denied with VFY-TOOL-004.">
 
-*The server changes the tool's description after you approved it. Verfy notices the new SHA-256 and blocks the call. Try it on [the website](https://verfy-tech.vercel.app/).*
+*The server changes the tool's description after you approved it. Verfy notices the new SHA-256 and blocks the call. Try it on [the website](https://verfy.dev/).*
 
 ▶ [The 60-second version](docs/assets/verfy-rug-pull.mp4) (MP4, 0.9 MB): pin the tools, the server ships an update, `verfy lock check` fails, the gateway hides the tool and denies the call. Recorded with verfy 0.5.0: every terminal line is real output of its demo server (`python -m verfy.demo_server --rugpull`).
 
@@ -26,7 +26,7 @@ Verfy checks every tool call a coding agent makes against your policy before it 
 
 ## Verfy and scanners
 
-Scanners judge a tool when you scan it. Verfy is built for what happens after: the tool changes, the agent calls it, and someone later asks what ran. Use both. From each project's own documentation, checked 2026-10-24 ([full table and sources](https://verfy-tech.vercel.app/compare)):
+Scanners judge a tool when you scan it. Verfy is built for what happens after: the tool changes, the agent calls it, and someone later asks what ran. Use both. From each project's own documentation, checked 2026-10-24 ([full table and sources](https://verfy.dev/compare)):
 
 | | [Snyk Agent Scan](https://github.com/snyk/agent-scan) (formerly Invariant mcp-scan) | [Cisco MCP Scanner](https://github.com/cisco-ai-defense/mcp-scanner) | [mcp-context-protector](https://github.com/trailofbits/mcp-context-protector) (Trail of Bits) | Verfy |
 | --- | --- | --- | --- | --- |
@@ -56,10 +56,10 @@ verfy verify                     # every signature and link in your ledger
 Without Python, an install script downloads a standalone build. Download it, read it, then run it (there is no `curl … | sh` one-liner on purpose: Verfy itself asks about that pattern, rule VFY-SH-005):
 
 ```bash
-curl -fsSLO https://verfy-tech.vercel.app/install.sh && less install.sh && sh install.sh      # macOS, Linux
+curl -fsSLO https://verfy.dev/install.sh && less install.sh && sh install.sh      # macOS, Linux
 ```
 ```powershell
-powershell -c "irm https://verfy-tech.vercel.app/install.ps1 -OutFile install.ps1"           # Windows: download,
+powershell -c "irm https://verfy.dev/install.ps1 -OutFile install.ps1"           # Windows: download,
 notepad install.ps1                                                                           # read,
 powershell -ExecutionPolicy Bypass -File install.ps1                                         # run
 ```
@@ -73,7 +73,7 @@ claude plugin install verfy@verfy
 
 The plugin installs the same hook for every session, plus a skill that lets Claude check your locks for you (approving changes stays with you). It calls the `verfy` command, so install the CLI first. Details: [`plugins/verfy/README.md`](plugins/verfy/README.md).
 
-More: [`verfy-cli/README.md`](verfy-cli/README.md) and the docs at https://verfy-tech.vercel.app/docs.
+More: [`verfy-cli/README.md`](verfy-cli/README.md) and the docs at https://verfy.dev/docs.
 
 ## Repository layout
 
@@ -83,7 +83,7 @@ verfy-cli/js/        the JavaScript twin of the rule engine, checked against the
 action.yml           the GitHub Action that runs `verfy lock check` in CI
 plugins/verfy/       the Claude Code plugin (hook + skill); .claude-plugin/marketplace.json lists it
 advisories/          Verfy Advisories: public, sourced vulnerabilities in MCP servers and agent tools (OSV), added by pull request
-install/             the one-line installers served at verfy-tech.vercel.app/install.sh and /install.ps1
+install/             the one-line installers served at verfy.dev/install.sh and /install.ps1
 research/            how often MCP tool definitions change between releases (method, code, workflow)
 docs/                limitations, research write-ups, assets
 ```

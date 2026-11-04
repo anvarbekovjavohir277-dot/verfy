@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs the standalone verfy CLI. Python is included; nothing else is needed.
 #
-#   curl -fsSL https://verfy-tech.vercel.app/install.sh | sh
+#   curl -fsSL https://verfy.dev/install.sh | sh
 #
 # Environment: VERFY_VERSION=0.2.0 pins a version; VERFY_INSTALL_DIR (default
 # ~/.local/share/verfy) and VERFY_BIN_DIR (default ~/.local/bin) move it;

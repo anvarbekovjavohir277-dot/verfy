@@ -21,4 +21,4 @@ Each change comes with a risk level (`low`, `medium`, `high`) and a short explan
 
 Approving a change is the user's decision, not yours. Do not run `verfy lock approve`, `verfy lock add`, `verfy lock check --update`, `verfy lock files --update` or `verfy policy use`: Verfy denies them when an agent runs them. Tell the user which command to run themselves after they have reviewed the change.
 
-If `verfy` is not found, tell the user to install it with `pip install verfy` (or the installer described at https://verfy-tech.vercel.app/docs#install) and run `verfy init`.
+If `verfy` is not found, tell the user to install it with `pip install verfy` (or the installer described at https://verfy.dev/docs#install) and run `verfy init`.

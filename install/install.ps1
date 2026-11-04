@@ -1,6 +1,6 @@
 # Installs the standalone verfy CLI on Windows. Python is included; nothing else is needed.
 #
-#   irm https://verfy-tech.vercel.app/install.ps1 | iex
+#   irm https://verfy.dev/install.ps1 | iex
 #
 # Before running it you can set $env:VERFY_VERSION = "0.2.0" to pin a version,
 # $env:VERFY_INSTALL_DIR to move it (default %LOCALAPPDATA%\Programs\verfy) and

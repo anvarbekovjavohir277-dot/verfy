@@ -4,7 +4,7 @@
 
 Please report security issues **privately**:
 
-Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)). Only the maintainers see the report.
+Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)). Only the maintainers see the report. If you cannot use GitHub, write to security@verfy.dev.
 
 A way for an agent to get past Verfy (a command, path or tool call that should be denied or asked about but is allowed) counts as a vulnerability: report it privately the same way.
 
@@ -33,7 +33,7 @@ People who reported a valid bypass or vulnerability, with their permission:
 
 In scope:
 - the `verfy` CLI as published on PyPI and as the standalone builds in this repository, the Claude Code plugin and the installers;
-- the hosted service at https://verfy-tech.vercel.app (Verfy Cloud: the website, the Team dashboard and the API devices use).
+- the hosted service at https://verfy.dev (Verfy Cloud: the website, the Team dashboard and the API devices use).
 
 Report issues in either the same way.
 
