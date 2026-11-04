@@ -348,14 +348,19 @@ def _remote_target(spec: dict) -> tuple[str, dict[str, str]]:
     return url, headers
 
 
-def _live_tools(spec: dict, timeout: float) -> list[dict] | None:
+def _live_server(spec: dict, timeout: float) -> dict | None:
     """Ask one configured server for its tools: start a stdio server, or call a remote one. None if the entry has neither."""
     launch = _stdio_launch(spec)
     if launch is not None:
-        return list_tools(launch[0], timeout=timeout, env=launch[1])["tools"]
+        return list_tools(launch[0], timeout=timeout, env=launch[1])
     if cfgscan.server_url(spec):
-        return list_tools_http(*_remote_target(spec), timeout=timeout)["tools"]
+        return list_tools_http(*_remote_target(spec), timeout=timeout)
     return None
+
+
+def _live_tools(spec: dict, timeout: float) -> list[dict] | None:
+    live = _live_server(spec, timeout)
+    return None if live is None else live["tools"]
 
 
 def _live_reports(found: list[dict], args) -> list[dict]:
@@ -893,6 +898,56 @@ def _step_summary(rows: list[dict], errors: list[str], path: Path) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+def cmd_lock_rollback(args) -> int:
+    """Go back to a release whose tools match the lock. Starts that release to prove it, and only then changes the config."""
+    path = Path(args.config)
+    if not path.is_file():
+        raise SystemExit(f"verfy lock rollback: no such config file: {path}")
+    cfg = json.loads(path.read_text("utf-8"))
+    servers = cfg.get("mcpServers") or cfg.get("servers") or {}
+    spec = servers.get(args.server)
+    if not isinstance(spec, dict):
+        raise SystemExit(f"verfy lock rollback: no server `{args.server}` in {path}")
+    lock = locks.load_lock(args.lock)
+    entry = lock["servers"].get(args.server)
+    if entry is None:
+        raise SystemExit(f"verfy lock rollback: `{args.server}` is not in {args.lock}, so there is nothing to go back to")
+    place = cfgscan.package_in(spec)
+    if place is None:
+        raise SystemExit(f"verfy lock rollback: `{args.server}` is not started through npx, bunx, uvx or pipx, so Verfy cannot choose its version. "
+                         "A remote server runs whatever its owner deployed.")
+    version = args.to or entry.get("server_version")
+    if not version:
+        raise SystemExit(f"verfy lock rollback: {args.lock} does not say which version `{args.server}` was. Pass --to VERSION.")
+    index, ecosystem, written = place
+    pinned = cfgscan.pin_package(written, version, ecosystem)
+    trial = json.loads(json.dumps(spec))
+    trial["args"][index] = pinned
+    print(f"Starting {pinned} to compare its tools with {args.lock} ...", file=sys.stderr)
+    try:
+        tools = _live_tools(trial, args.timeout)
+    except MCPError as e:
+        print(f"verfy lock rollback: could not start {pinned}: {e}", file=sys.stderr)
+        print("The server may report a version that is not its package's. Pass the package version with --to.", file=sys.stderr)
+        return 3
+    differ = [r for r in locks.compare(lock, args.server, tools or []) if r["status"] != "ok"]
+    if differ:
+        for r in differ:
+            print(f"  {c(r['status'].ljust(7), LSTAT[r['status']])} {args.server}/{r['tool']}")
+        print(f"{pinned} does not match {args.lock}, so the config was not changed.", file=sys.stderr)
+        return 2
+    print(f"{c('OK', '32;1')}  every tool of {pinned} matches {args.lock}.")
+    if not args.write:
+        print(f"Would change `{written}` to `{pinned}` in {path} (add --write to save; a backup is kept).")
+        return 0
+    spec["args"][index] = pinned
+    backup = path.with_suffix(path.suffix + ".verfy-backup")
+    shutil.copyfile(path, backup)
+    path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", "utf-8")
+    print(f"{path}: `{written}` is now `{pinned}`. Backup: {backup}. Restart your MCP client to use it.")
+    return 0
+
+
 def cmd_lock_check(args) -> int:
     """Read the tools of every server in an MCP config (stdio servers are started, remote ones asked over HTTP) and compare them with verfy.lock (for CI)."""
     cfg = Path(args.config)
@@ -910,18 +965,21 @@ def cmd_lock_check(args) -> int:
     rows: list[dict] = []
     errors: list[str] = []
     current: dict[str, list[dict]] = {}
+    versions: dict[str, str] = {}
     for name, spec in sorted(servers.items()):
         if wanted and name not in wanted:
             continue
         try:
-            tools = _live_tools(spec, args.timeout)
+            live = _live_server(spec, args.timeout)
         except MCPError as e:
             errors.append(f"`{name}`: {e}")
             continue
-        if tools is None:
+        if live is None:
             print(f"[verfy] skipping `{name}`: no command or url in its config", file=sys.stderr)
             continue
-        current[name] = tools
+        current[name] = live["tools"]
+        if isinstance(live.get("server"), dict) and isinstance(live["server"].get("version"), str):
+            versions[name] = live["server"]["version"]
         rows += [{"server": name, **r} for r in locks.compare(lock, name, current[name])]
     gone = [s for s in lock["servers"] if s not in servers and (not wanted or s in wanted)]
     for name in gone:
@@ -934,7 +992,7 @@ def cmd_lock_check(args) -> int:
         file_rows = _file_rows(lock["files"], files_now, root, user=False)
 
     if args.update:
-        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows)
+        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows, versions)
 
     for r in rows:
         if r["status"] in ("drift", "new"):
@@ -986,7 +1044,7 @@ def cmd_lock_check(args) -> int:
 
 
 def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[str], rows: list[dict], errors: list[str],
-                       files_now: dict | None = None, file_rows: list[dict] | None = None) -> int:
+                       files_now: dict | None = None, file_rows: list[dict] | None = None, versions: dict[str, str] | None = None) -> int:
     if errors:
         for e in errors:
             print(f"verfy lock check: could not read tools from {e}", file=sys.stderr)
@@ -1020,6 +1078,8 @@ def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[s
     def apply(lk: dict) -> None:
         for name, tools in current.items():
             entry = lk["servers"].setdefault(name, {"tools": {}})
+            if (versions or {}).get(name):
+                entry["server_version"] = versions[name]
             names = set()
             for t in tools:
                 d = locks.definition(t)
@@ -1437,6 +1497,14 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--timeout", type=float, default=60.0)
     x.add_argument("--json", action="store_true")
     x.set_defaults(fn=cmd_lock_check)
+    x = lk.add_parser("rollback", help="go back to a release whose tools match the lock: starts it to prove it, then pins it in the config")
+    x.add_argument("server")
+    x.add_argument("--to", metavar="VERSION", help="the package version (default: the version recorded when the server was locked)")
+    x.add_argument("--config", default=".mcp.json", help="MCP config of the server (default .mcp.json)")
+    x.add_argument("--lock", default="verfy.lock", help="lock file to compare with (default ./verfy.lock)")
+    x.add_argument("--write", action="store_true", help="save the change (a backup is kept)")
+    x.add_argument("--timeout", type=float, default=60.0)
+    x.set_defaults(fn=cmd_lock_rollback)
     x = lk.add_parser("files", help="pin the files an agent loads (CLAUDE.md, AGENTS.md, rules, skills, commands, hooks, plugins)")
     x.add_argument("--user", action="store_true", help="files in your home folder (user instructions, skills, installed plugins), pinned in ~/.verfy/agent-files.lock")
     x.add_argument("--update", action="store_true", help="review the changes and write them to the lock")

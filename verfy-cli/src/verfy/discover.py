@@ -132,6 +132,40 @@ def _pinned(spec: str, ecosystem: str) -> bool:
     return bool(re.search(r"(==|@)\d", spec))
 
 
+def package_in(spec: dict) -> tuple[int, str, str] | None:
+    """Where a stdio server's package is in its config entry: (index in `args`, ecosystem, the package as written).
+    None when it is not started through a package runner. Looks past a Verfy gateway in front of it."""
+    args = [str(a) for a in spec.get("args") or []]
+    base = Path(str(spec.get("command") or "")).name.lower().removesuffix(".exe").removesuffix(".cmd")
+    start = 0
+    if base == "verfy" and "--" in args:
+        start = args.index("--") + 1
+        if start >= len(args):
+            return None
+        base = Path(args[start]).name.lower().removesuffix(".exe").removesuffix(".cmd")
+        start += 1
+    if base in ("pnpm", "yarn") and args[start:start + 1] == ["dlx"]:
+        base, start = "npx", start + 1
+    if base == "uv" and args[start:start + 2] == ["tool", "run"]:
+        base, start = "uvx", start + 2
+    if base == "pipx" and args[start:start + 1] == ["run"]:
+        start += 1
+    if base not in RUNNERS:
+        return None
+    pkg = _package_arg(args[start:])
+    if not pkg or pkg.startswith((".", "/", "~")):
+        return None
+    return args.index(pkg, start), RUNNERS[base], pkg
+
+
+def pin_package(pkg: str, version: str, ecosystem: str) -> str:
+    """The package with this exact version, replacing any version already written."""
+    if ecosystem == "npm":
+        scope, name = ("@", pkg[1:]) if pkg.startswith("@") else ("", pkg)
+        return f"{scope}{name.split('@')[0]}@{version}"
+    return f"{re.split(r'[=<>~!@]', pkg)[0]}=={version}"
+
+
 def _package_arg(args: list[str]) -> str | None:
     skip_next = {"--package", "-p", "--from", "--with", "--python"}
     i = 0

@@ -26,6 +26,16 @@ claude plugin install verfy@verfy
 
 Claude Code then runs `verfy hook pre-tool-use` before every tool call. The agent cannot switch Verfy off through what Verfy sees: changes to the hook settings, `verfy.lock`, the policy, `~/.verfy` or the Verfy install are denied, changes to MCP configs need approval, and so do `verfy lock approve`, `verfy lock check --update`, `verfy lock files --update`, `verfy import --save`, `verfy init --force`, `verfy team enroll` (or `verfy init --url/--code`), `verfy team auto-sync off` and `pip uninstall verfy` when the agent runs them (denied). Verfy answers **deny** or **ask** with the rule and reason, or stays silent so Claude Code's own permissions decide; it never answers allow itself. Any error becomes `ask` (or `deny` with `"fail_mode": "deny"`). The hook never touches the network itself; on a device enrolled in Verfy Cloud with automatic upload it starts `verfy sync` as a separate background process, at most every five minutes.
 
+## Go back to a release that matches the lock
+
+```bash
+verfy lock rollback filesystem               # starts the locked version and compares its tools with verfy.lock
+verfy lock rollback filesystem --write       # pins that version in .mcp.json (a backup is kept)
+verfy lock rollback filesystem --to 1.2.3    # another version
+```
+
+The config changes only if every tool of that release matches the lock. It works for servers started through npx, bunx, uvx and pipx; a remote server runs whatever its owner deployed.
+
 ## Update
 
 ```bash

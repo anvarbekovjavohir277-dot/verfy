@@ -4,6 +4,7 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 ## Unreleased
 
+- **`verfy lock rollback SERVER`.** When a tool changed, go back to a release that matches the lock instead of stopping work. It starts that release, compares its tools with `verfy.lock`, and only if they all match pins the version in your MCP config (`--write`, with a backup). The default is the version the server reported when it was locked, which `verfy lock check --update` now records; `--to VERSION` picks another. It works for servers started through npx, bunx, uvx and pipx. A remote server cannot be rolled back: it runs whatever its owner deployed. The guard denies `verfy lock rollback --write` when the agent runs it.
 - **The gateway guards remote MCP servers too.** `verfy wrap` now puts a remote server (a `url` in the config) behind the gateway, through a new `verfy bridge` that speaks stdio on one side and Streamable HTTP on the other, so rules, the lock, redaction and receipts apply to it as they do to a local server. Headers move to the server's `env`, so a key is not on a command line; `${VAR}` is filled in when the bridge starts. Verfy does not follow redirects. Not covered yet: the older SSE transport (`verfy wrap` leaves those servers alone and says so), servers that sign in with OAuth in your MCP client (the bridge has only the headers in the config), and messages a server sends outside an answer to a request.
 
 ## 0.9.1 (2026-11-04)

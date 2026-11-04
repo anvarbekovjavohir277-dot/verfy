@@ -6,6 +6,7 @@
       "version": 1,
       "servers": {
         "filesystem": {
+          "server_version": "1.2.3",           # what the server reported when it was locked, for `verfy lock rollback`
           "tools": {
             "read_file": {
               "digest": "sha256:...",          # sha256 of canonical {name, description, inputSchema}

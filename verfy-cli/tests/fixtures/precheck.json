@@ -1132,6 +1132,40 @@
    }
   },
   {
+   "name": "agent rolls a server back",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy lock rollback docs --to 1.2.3 --write"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "shell",
+    "rules": [
+     "VFY-SELF-003"
+    ]
+   }
+  },
+  {
+   "name": "looking at a rollback is fine",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "verfy lock rollback docs --to 1.2.3"
+    }
+   },
+   "policy": {},
+   "context": {},
+   "expect": {
+    "verdict": "allow",
+    "kind": "shell",
+    "rules": []
+   }
+  },
+  {
    "name": "agent enrolls the device elsewhere",
    "action": {
     "tool": "Bash",
