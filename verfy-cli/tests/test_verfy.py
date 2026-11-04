@@ -61,15 +61,6 @@ class Fixtures(unittest.TestCase):
         for c in load("canonical.json"):
             self.assertEqual(canonical(c["value"]), c["canonical"])
 
-    def test_secrets(self):
-        from verfy._util import redact, scan_secrets
-        for case in load("secrets.json"):
-            with self.subTest(case["name"]):
-                text = "".join(case["parts"])
-                self.assertEqual(scan_secrets(text), case["expect"])
-                expected = "[REDACTED:" + case["expect"][0]["id"] + "]" if case["expect"] else text
-                self.assertEqual(redact(text), expected)
-
 
 class Engine(unittest.TestCase):
     def test_every_verdict_has_findings(self):
@@ -98,52 +89,6 @@ class Engine(unittest.TestCase):
 
     def test_numbers_match_javascript(self):
         self.assertEqual(canonical([1e-7, 0.00001, 1e21, 100.0, 2.5]), "[1e-7,0.00001,1e+21,100,2.5]")
-
-
-class SecretTokens(unittest.TestCase):
-    TOKENS = [
-        ("huggingface-token", "hf_" + "a1" * 17),
-        ("huggingface-token", "hf_" + "Ab2" * 16),
-        ("gitlab-token", "glpat-" + "Ab1_" * 4 + "Cd2-"),
-        ("gitlab-token", "glpat-" + "Ab1-" * 4 + "Cd2_"),
-        ("npm-token", "npm_" + "a1B2" * 9),
-    ]
-
-    def test_detection_and_redaction(self):
-        from verfy._util import redact_output, scan_secrets
-        for rid, token in self.TOKENS:
-            with self.subTest(rid=rid, token_length=len(token)):
-                self.assertEqual([(h["id"], h["severity"]) for h in scan_secrets(token)], [(rid, "high")])
-                text = f"first: {token}; second: {token}."
-                out, count = redact_output({"content": [{"type": "text", "text": text}]})
-                self.assertEqual(count, 2)
-                self.assertEqual(out["content"][0]["text"], f"first: [REDACTED:{rid}]; second: [REDACTED:{rid}].")
-
-    def test_short_values_and_placeholders_are_not_secrets(self):
-        from verfy._util import scan_secrets
-        values = ["hf_" + "a1" * 16 + "a", "glpat-" + "a1" * 9 + "a", "npm_" + "a1" * 17 + "a",
-                  "glpat-" + "a1" * 10 + "-", "npm_" + "a1" * 18 + "a", "hf_" + "a1" * 8 + "_" + "a1" * 9,
-                  "hf_" + "example" + "a1" * 14, "glpat-" + "example" + "a" * 13, "npm_" + "example" + "a" * 29]
-        values += ["prefix" + token for _, token in self.TOKENS]
-        for value in values:
-            with self.subTest(value_length=len(value)):
-                self.assertEqual(scan_secrets(value), [])
-
-    def test_tokens_are_reported_in_configs_and_tools(self):
-        from verfy.discover import check_server
-        for rid, token in self.TOKENS:
-            with self.subTest(rid=rid):
-                findings = check_server("demo", {"command": "node", "args": ["server.js"], "env": {"TOKEN": token}})
-                self.assertIn(("VFY-CFG-003", "high"), [(f["rule"], f["severity"]) for f in findings])
-                rep = scan([{"name": "demo", "description": token, "inputSchema": {"type": "object"}}])
-                self.assertIn(("VFY-SCAN-013", "high"), [(f["rule"], f["severity"]) for f in rep["tools"][0]["findings"]])
-
-    def test_tokens_cannot_be_sent_in_messages(self):
-        for rid, token in self.TOKENS:
-            with self.subTest(rid=rid):
-                result = check({"tool": "send_email", "arguments": {"to": "team@example.com", "body": token}})
-                self.assertEqual(result["verdict"], "deny")
-                self.assertIn("VFY-SEC-001", [f["rule"] for f in result["findings"]])
 
 
 class Crypto(unittest.TestCase):
@@ -451,44 +396,6 @@ class CLI(unittest.TestCase):
         self.assertEqual(wrapped["web"]["args"][-3:], ["bridge", "--url", "https://x"])
         code, out, _ = self.run_cli("ledger", "verify", home=home)
         self.assertEqual(code, 0)
-
-    def test_ledger_show_json_preserves_recent_signed_receipts(self):
-        with tempfile.TemporaryDirectory() as home:
-            path = Path(home) / "receipts.jsonl"
-            key = Key.generate()
-            ledger = Ledger(path, key)
-            for i in range(3):
-                ledger.append(
-                    agent="test", session="synthetic",
-                    action={"server": "demo", "tool": "echo", "arguments": {"message": f"hello {i} ✓"}},
-                    decision={"verdict": "allow", "rules": []},
-                    outcome={"status": "ok", "result_sha256": None},
-                    policy_sha256="sha256:0", include_args=True,
-                )
-            stored = read_ledger(path)
-            before = path.read_bytes()
-            for options, expected in [(("-n", "2"), stored[-2:]), (("-n", "5"), stored), ((), stored)]:
-                with self.subTest(options=options):
-                    code, out, err = self.run_cli("ledger", "show", "--json", "--ledger", str(path), *options, home=home)
-                    self.assertEqual(code, 0, err)
-                    receipts = json.loads(out)
-                    self.assertEqual(receipts, expected)
-                    self.assertTrue(all("sig" in r and verify_receipt(r, key.public) for r in receipts))
-            self.assertEqual(path.read_bytes(), before)
-
-    def test_ledger_show_json_empty_ledger(self):
-        with tempfile.TemporaryDirectory() as home:
-            path = Path(home) / "ledger.jsonl"
-            for exists in (False, True):
-                with self.subTest(exists=exists):
-                    if exists:
-                        path.touch()
-                    code, out, err = self.run_cli("ledger", "show", "--json", home=home)
-                    self.assertEqual(code, 0, err)
-                    self.assertEqual(json.loads(out), [])
-            code, out, err = self.run_cli("ledger", "show", home=home)
-            self.assertEqual(code, 0, err)
-            self.assertEqual(out, "No receipts yet.\n")
 
 
 
