@@ -2,6 +2,14 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.9.1 (2026-11-04)
+
+Three contributions from [BryanOnKeys](https://github.com/BryanOnKeys), the first from outside the project. Thank you.
+
+- `verfy ledger show --json` prints recent receipts as a JSON array, with their signatures.
+- Secret detection and redaction cover Hugging Face, GitLab and npm tokens.
+- `verfy scan` reports `deno run` with an unpinned `npm:` or `jsr:` package (VFY-CFG-001).
+
 ## 0.9.0 (2026-11-04)
 
 - **Salted hashes in receipts.** Receipts hold a hash of a call's arguments and result, not the values, and that is what reaches Verfy Cloud. A plain SHA-256 of a short argument such as `{"command": "ls"}` can be guessed by hashing likely values, so anyone with the database could have read it back. From this version the hash is SHA-256 of the value together with a secret salt that stays in `~/.verfy/key.json`, so it says nothing without that file. The format is unchanged (`args_sha256` and `result_sha256`, still `sha256:…`), signatures and chains work as before, and a key file without a salt gets one the first time it signs. Receipts written before this version keep their plain hashes. Hashes sent to the approval queue are salted too.
