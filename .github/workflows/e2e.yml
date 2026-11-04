@@ -31,7 +31,7 @@ jobs:
   e2e:
     name: End-to-end (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 60 # counts the wait for a runner too, and a macOS runner can take a long time to get
     strategy:
       fail-fast: false
       matrix:
