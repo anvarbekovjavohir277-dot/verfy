@@ -1,11 +1,15 @@
 {
   "servers": {
     "demo": {
+      "server_version": "0.1.0",
       "tools": {
         "fetch_url": {
-          "approved_at": "2026-10-18T05:28:32.816Z",
+          "approved_at": "2026-11-05T18:44:56.078Z",
           "approved_by": "user",
           "definition": {
+            "annotations": {
+              "readOnlyHint": true
+            },
             "description": "Download a web page and return its text.",
             "inputSchema": {
               "properties": {
@@ -20,12 +24,15 @@
             },
             "name": "fetch_url"
           },
-          "digest": "sha256:aa9bb890de003349445cfaac3d8058b424a888e79f4cea343cb57aa96be87609"
+          "digest": "sha256:ddeb7f07cdf774a577db6c1b4cf9cfd0fbd1139047779c213380c6b5cef76be5"
         },
         "read_file": {
-          "approved_at": "2026-10-18T05:28:32.816Z",
+          "approved_at": "2026-11-05T18:44:56.078Z",
           "approved_by": "user",
           "definition": {
+            "annotations": {
+              "readOnlyHint": true
+            },
             "description": "Read a text file.",
             "inputSchema": {
               "properties": {
@@ -40,7 +47,7 @@
             },
             "name": "read_file"
           },
-          "digest": "sha256:cbd72aaa101bf0ab9840eeb20523b81c11173aa3c03983496e5f09a41acfc11d"
+          "digest": "sha256:d18982e68987817734f5ac1ba60bf9cab6077fd2352a3a11cd2ae42fd29c0529"
         },
         "run_command": {
           "approved_at": "2026-10-18T05:28:32.816Z",
