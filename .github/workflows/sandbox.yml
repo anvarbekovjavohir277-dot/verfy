@@ -4,7 +4,7 @@ name: Sandbox
 # scripts/e2e_sandbox.py checks what the operating system refuses; the unit tests stop where the runtime starts.
 on:
   push:
-    branches: [main, run-agent]
+    branches: [main]
     paths:
       - verfy-cli/src/verfy/cli.py
       - verfy-cli/src/verfy/sandbox.py

@@ -117,7 +117,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.11.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.12.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -165,6 +165,34 @@ verfy sandbox sync --write        # ~/.claude/settings.json, a backup is kept; -
 ```
 
 `sync` turns the sandbox on, sets `allowUnsandboxedCommands` to false, adds credential paths and `~/.verfy` to `filesystem.denyRead`, and adds your policy's `network.allow` hosts to `network.allowedDomains`. It only adds. It leaves `failIfUnavailable` alone, because that stops Claude Code from starting on a machine without the sandbox. The sandbox runs on macOS, Linux and WSL2, not on native Windows.
+
+### Run one command in a sandbox
+
+Claude Code's sandbox leaves out MCP servers. `verfy run --sandbox` starts any command, a server included, inside Anthropic's [sandbox runtime](https://github.com/anthropics/sandbox-runtime) (`srt`), with settings from your policy. Install `srt` yourself, outside the project; on Linux it also needs `bubblewrap`, `socat` and `ripgrep`, and on macOS `ripgrep`.
+
+```bash
+npm install --global @anthropic-ai/sandbox-runtime
+verfy run --sandbox -- node script.js                       # no network, writes only in this folder
+verfy run --sandbox --allow-host api.example.com -- node script.js
+verfy run --sandbox --print -- node script.js               # show the settings and stop
+verfy run --sandbox --agent -- claude                       # the agent itself, with its Verfy hook
+```
+
+Behind the gateway, an MCP server looks like this. `npx` needs its cache and the registry:
+
+```bash
+verfy proxy --name memory -- verfy run --sandbox --allow-write ~/.npm --allow-host registry.npmjs.org -- npx -y @modelcontextprotocol/server-memory@2.1.0
+```
+
+| Setting | Comes from |
+|---|---|
+| Hosts it can reach | `network.allow` and `--allow-host`; `network.deny` wins |
+| Paths it can write | this folder and `--allow-write`; never Verfy's own folder, unless `--agent` |
+| Paths it cannot read | credential paths, `~/.verfy` (unless `--agent`) and `files.sensitive` |
+
+If `srt` is missing, or sits in a folder the command could write to, the command does not run (exit 3). It works on macOS and Linux and refuses on native Windows. Otherwise the exit code is the command's own. With `--agent` the hook needs Verfy's folder, so the guard, not the sandbox, keeps the agent out of the signing key.
+
+Receipts then carry `"sandbox": "srt"` (or `"claude-code"` when Claude Code's sandbox is on). That is what this machine states, not a proof. `srt` is a research preview. Environment variables reach the command, so keep secrets out of what you allow to leave.
 
 ## After the agent reads outside text
 

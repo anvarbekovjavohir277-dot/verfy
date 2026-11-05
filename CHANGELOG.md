@@ -2,6 +2,13 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.12.0 (2026-11-05)
+
+- **`verfy run --sandbox -- COMMAND`.** Starts one command inside Anthropic's sandbox runtime (`srt`), a separate open source tool, with settings written from your Verfy policy: no network except `network.allow` and `--allow-host`, writes only in this folder and `--allow-write` paths, and no reading credential paths, `~/.verfy` or what `files.sensitive` lists. This covers what Claude Code's sandbox leaves out, because it can hold an MCP server: `verfy proxy --name fs -- verfy run --sandbox -- npx ...`. The command does not run if `srt` is missing or sits in a folder the command could write to. It works on macOS and Linux and refuses on native Windows. `srt` is a research preview and you install it yourself.
+- **`--agent` runs the agent itself in it.** The Verfy hook then runs inside the sandbox too, so Verfy's folder stays open to it, and the guard, not the sandbox, keeps the agent out of the signing key. Credentials stay unreadable. It opens `api.anthropic.com` and Claude Code's own files.
+- **Receipts say when a call ran in a sandbox:** `"sandbox": "srt"` from `verfy run`, or `"claude-code"` when Claude Code's sandbox is on in the settings the hook can see. It is what this machine states, not a proof. Older receipts have no such field and stay valid.
+- A new workflow runs all of this on real Linux and macOS and checks what the system refuses, including a real MCP server, the hook signing from inside, and that a command never runs unsandboxed. The scanner and `verfy lock rollback` see through `verfy run`, so a sandboxed server is still checked and pinned.
+
 ## 0.11.0 (2026-11-05)
 
 - **`verfy proxy --name NAME --url https://...`.** Puts a remote server behind the gateway in one command. `--bearer-env VAR` reads a bearer token from the environment, so it is not on the command line, in `verfy.lock`, in receipts or in logs, and Verfy refuses to send it over plain http. Scans and `verfy lock check` treat the entry as the remote server it is. OAuth is not supported yet.
