@@ -155,7 +155,8 @@ def wsl_command(args: list[str], cwd: Path, which=shutil.which, run=subprocess.r
     """The same `verfy run` inside WSL2. Raises ValueError rather than run a command without the sandbox it was asked for."""
     wsl = which("wsl.exe")
     start = [wsl, "--cd", str(cwd), "--exec", "bash", "-lc"]
-    if not wsl or run([*start, "command -v verfy && command -v srt"], capture_output=True).returncode != 0:
+    # stdin stays out of this check: it belongs to the command, and an MCP server reads its requests from it
+    if not wsl or run([*start, "command -v verfy && command -v srt"], stdin=subprocess.DEVNULL, capture_output=True).returncode != 0:
         raise ValueError(f"native Windows has no sandbox runtime, so the command was not run. Install WSL2, then verfy and srt inside it: {RUNTIME_INSTALL}")
     return [*start, 'exec verfy "$@"', "verfy", *args]
 

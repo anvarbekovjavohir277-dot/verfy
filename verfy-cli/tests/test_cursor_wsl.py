@@ -169,6 +169,15 @@ class WindowsTests(unittest.TestCase):
         self.assertEqual(command[:7], ["wsl.exe", "--cd", str(Path("/w")), "--exec", "bash", "-lc", 'exec verfy "$@"'])
         self.assertEqual(command[-3:], ["sh", "-c", "echo 'a b'; rm x"])
 
+    def test_the_check_leaves_stdin_to_the_command(self):
+        seen = {}
+
+        def run(command, **kw):
+            seen.update(kw)
+            return types.SimpleNamespace(returncode=0)
+        sandbox.wsl_command(["run"], Path("/w"), which=lambda _: "wsl.exe", run=run)
+        self.assertEqual(seen["stdin"], sandbox.subprocess.DEVNULL)
+
     def test_every_flag_reaches_verfy_inside_wsl(self):
         args = types.SimpleNamespace(agent=True, allow_host=["a.dev"], allow_write=["out"], policy="p.json", cmd=["node", "x.js"])
         with mock.patch.object(sandbox, "wsl_command", return_value=["wsl"]) as built, mock.patch.object(cli.subprocess, "run", return_value=types.SimpleNamespace(returncode=7)):
