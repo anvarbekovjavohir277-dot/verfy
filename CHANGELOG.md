@@ -12,7 +12,7 @@ An internal attack test found these, and the [report](https://github.com/anvarbe
 - **More shell tricks are stopped or need a person:** `busybox`, a computed command name, a here-string into a shell, inline code that deletes, fetches or names a key, download then run, `crontab`, `systemctl enable`, git settings that run a command, a new git remote, a container given the host's disk, and `pipx run verfy` or `uvx verfy`.
 - **The gateway forwards only what it could read.** A line that is not strict JSON and a `tools/call` without an id are dropped, and a malformed message no longer stops it.
 - **The lock also covers `title`, `annotations` and `outputSchema`** when a server sends them, because clients act on annotations. **After you upgrade, tools that have these fields show as changed once:** review them with `verfy lock diff` and approve. Verfy Cloud accepts the new fields.
-- **A sandboxed command cannot change `verfy.lock`, the policy, `.mcp.json`, Claude Code's or Cursor's settings, git hooks or `.git/config` in its own folder,** because those decide what runs later, outside the sandbox.
+- **A sandboxed command cannot change `verfy.lock`, the policy, `.mcp.json`, Claude Code's or Cursor's settings, git hooks or `.git/config` in its own folder,** because those decide what runs later, outside the sandbox. On Linux this covers the files that exist when it starts.
 
 ## 0.15.0 (2026-11-05)
 

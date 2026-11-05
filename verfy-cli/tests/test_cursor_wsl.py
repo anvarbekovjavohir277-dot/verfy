@@ -192,11 +192,19 @@ class AttackRegressionTests(unittest.TestCase):
         self.assertIn("annotations", got["summary"] + str(got["changes"]))
 
     def test_the_sandbox_closes_what_runs_later(self):
-        deny = sandbox.runtime_settings({})["filesystem"]["denyWrite"]
-        agent = sandbox.runtime_settings({}, agent=True)["filesystem"]["denyWrite"]
+        with mock.patch.object(sandbox, "LINUX", False):
+            deny = sandbox.runtime_settings({})["filesystem"]["denyWrite"]
+            agent = sandbox.runtime_settings({}, agent=True)["filesystem"]["denyWrite"]
         for path in ("./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude/settings.json", "./.git/hooks", "./.git/config"):
             self.assertIn(path, deny)
             self.assertIn(path, agent)
+
+    def test_on_linux_a_missing_file_is_left_out_or_the_hook_could_not_read_it(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "verfy.lock").write_text("{}")
+        with mock.patch.object(sandbox, "LINUX", True):
+            self.assertEqual(sandbox.project_control(tmp), ["./verfy.lock"])
 
 
 class GatewayInputTests(unittest.TestCase):
