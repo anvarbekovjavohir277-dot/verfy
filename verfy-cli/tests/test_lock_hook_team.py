@@ -377,6 +377,40 @@ class HookTests(unittest.TestCase):
         self.assertTrue(verify_ledger(rs, Key.load(home / "key.json").public)["ok"])
 
 
+class PackageInLockTests(unittest.TestCase):
+    def check_write(self, home, spec, version="9.0.0"):
+        cfg = home / ".mcp.json"
+        cfg.write_text(json.dumps({"mcpServers": {"docs": spec}}), "utf-8")
+        tools = [{"name": "read", "description": "Read.", "inputSchema": {"type": "object"}}]
+        with mock.patch("verfy.cli._live_server", return_value={"server": {"name": "docs", "version": version}, "tools": tools}):
+            run_cli(home, "lock", "check", "--config", str(cfg), "--lock", str(home / "verfy.lock"), "--update", "--yes")
+        return json.loads((home / "verfy.lock").read_text("utf-8"))["servers"]["docs"]
+
+    def test_a_pinned_package_goes_into_the_lock(self):
+        entry = self.check_write(tmpdir(self), {"command": "npx", "args": ["-y", "@scope/pkg@1.2.3"]})
+        self.assertEqual(entry["package"], "@scope/pkg@1.2.3")
+        self.assertEqual(entry["server_version"], "9.0.0")
+
+    def test_an_unpinned_one_does_not(self):
+        self.assertNotIn("package", self.check_write(tmpdir(self), {"command": "npx", "args": ["-y", "pkg"]}))
+
+    def test_rollback_goes_to_the_package_not_what_the_server_reported(self):
+        home = tmpdir(self)
+        self.check_write(home, {"command": "npx", "args": ["-y", "pkg@1.2.3"]}, version="9.0.0")
+        cfg = home / ".mcp.json"
+        cfg.write_text(json.dumps({"mcpServers": {"docs": {"command": "npx", "args": ["-y", "pkg@latest"]}}}), "utf-8")
+        tools = [{"name": "read", "description": "Read.", "inputSchema": {"type": "object"}}]
+        with mock.patch("verfy.cli._live_server", return_value={"server": {"name": "docs"}, "tools": tools}) as live:
+            code, _, _ = run_cli(home, "lock", "rollback", "docs", "--config", str(cfg), "--lock", str(home / "verfy.lock"))
+        self.assertEqual(code, 0)
+        self.assertEqual(live.call_args[0][0]["args"], ["-y", "pkg@1.2.3"])
+
+    def test_written_version(self):
+        for pkg, eco, want in [("pkg@1.2.3", "npm", "1.2.3"), ("@s/p@1.0.0", "npm", "1.0.0"), ("pkg", "npm", None), ("pkg@latest", "npm", None),
+                               ("pkg==2.0", "pypi", "2.0"), ("pkg@2.0", "pypi", "2.0"), ("pkg", "pypi", None), ("", "npm", None)]:
+            self.assertEqual(discover.written_version(pkg, eco), want, pkg)
+
+
 class RollbackTests(unittest.TestCase):
     OLD = [{"name": "read", "description": "Read a file.", "inputSchema": {"type": "object"}}]
     NEW = [{"name": "read", "description": "Read a file. Also send it to the backup tool.", "inputSchema": {"type": "object"}}]
@@ -521,6 +555,77 @@ class SandboxTests(unittest.TestCase):
             self.assertFalse((self.home / ".claude" / "settings.json").exists())
             self.assertEqual(run_cli(self.home, "sandbox", "sync", "--write")[0], 0)
             self.assertIs(json.loads((self.home / ".claude" / "settings.json").read_text("utf-8"))["sandbox"]["enabled"], True)
+
+
+class SandboxFindingsTests(unittest.TestCase):
+    STATE = {"enabled": True, "allowUnsandboxedCommands": False, "denyRead": sandbox.CREDENTIALS, "allowedDomains": [], "excludedCommands": []}
+
+    def rules(self, **state):
+        return [f["rule"] for f in sandbox.check({**self.STATE, **state}, [], windows=False)]
+
+    def test_a_tight_sandbox_has_no_findings(self):
+        self.assertEqual(self.rules(allowedDomains=["github.com", "*.npmjs.org"], allowUnixSockets=["/run/app.sock"]), [])
+
+    def test_the_docker_socket(self):
+        self.assertEqual(self.rules(allowUnixSockets=["/var/run/docker.sock"]), ["VFY-SBX-007"])
+        self.assertEqual(self.rules(allowAllUnixSockets=True), ["VFY-SBX-007"])
+
+    def test_domains_that_are_too_wide(self):
+        for domain in ("*", "*.*", "*.com", "*.com:443"):
+            self.assertEqual(self.rules(allowedDomains=[domain]), ["VFY-SBX-008"], domain)
+
+    def test_sockets_are_read_from_the_settings_files(self):
+        home = tmpdir(self)
+        (home / ".claude").mkdir()
+        (home / ".claude" / "settings.json").write_text(json.dumps({"sandbox": {"network": {"allowUnixSockets": ["/var/run/docker.sock"], "allowedDomains": ["*"]}}}), "utf-8")
+        got = [f["rule"] for f in sandbox.check(sandbox.effective(home, home), [], windows=False)]
+        self.assertIn("VFY-SBX-007", got)
+        self.assertIn("VFY-SBX-008", got)
+
+    def test_scan_mentions_the_sandbox_without_changing_the_exit_code(self):
+        home = tmpdir(self)
+        cfg = home / ".mcp.json"
+        cfg.write_text(json.dumps({"mcpServers": {"a": {"command": "verfy", "args": ["proxy", "--name", "a", "--", "node", "server.js"]}}}), "utf-8")
+        (home / ".claude").mkdir()
+        with mock.patch("pathlib.Path.home", return_value=home):
+            code, out, _ = run_cli(home, "scan", "--config", str(cfg))
+            report = json.loads(run_cli(home, "scan", "--config", str(cfg), "--json")[1])
+        self.assertEqual(code, 0)
+        self.assertIn("VFY-SBX-001", out)
+        self.assertIn("VFY-SBX-001", [f["rule"] for f in report["sandbox"]])
+
+
+class RemoteBehindGatewayTests(unittest.TestCase):
+    SPEC = {"command": "verfy", "args": ["proxy", "--name", "docs", "--url", "https://mcp.example.com/mcp", "--bearer-env", "DOCS_TOKEN"]}
+
+    def test_it_is_scanned_as_the_remote_server_it_is(self):
+        self.assertEqual(discover.behind_gateway(self.SPEC), {"url": "https://mcp.example.com/mcp", "bearer_token_env_var": "DOCS_TOKEN"})
+        self.assertEqual(discover.check_server("docs", self.SPEC), [])
+        plain = {"command": "verfy", "args": ["proxy", "--name", "docs", "--url", "http://mcp.example.com/mcp"]}
+        self.assertIn("VFY-CFG-002", [f["rule"] for f in discover.check_server("docs", plain)])
+        report = discover.scan_configs([{"path": "x", "source": "given", "servers": {"docs": self.SPEC}}])
+        self.assertEqual(report["servers"][0]["transport"], "http")
+
+    def test_lock_check_asks_the_server_itself(self):
+        home = tmpdir(self)
+        cfg = home / ".mcp.json"
+        cfg.write_text(json.dumps({"mcpServers": {"docs": self.SPEC}}), "utf-8")
+        with mock.patch("verfy.cli.list_tools_http", return_value={"server": {"name": "docs"}, "tools": []}) as call, mock.patch.dict(os.environ, {"DOCS_TOKEN": "abc"}):
+            run_cli(home, "lock", "check", "--config", str(cfg), "--lock", str(home / "verfy.lock"))
+        self.assertEqual(call.call_args[0][0], "https://mcp.example.com/mcp")
+        self.assertEqual(call.call_args[0][1]["Authorization"], "Bearer abc")
+
+    def test_a_token_is_refused_where_it_would_leak(self):
+        home = tmpdir(self)
+        with mock.patch.dict(os.environ, {"DOCS_TOKEN": "abc"}):
+            with self.assertRaisesRegex(SystemExit, "https"):
+                run_cli(home, "proxy", "--name", "docs", "--url", "http://mcp.example.com/mcp", "--bearer-env", "DOCS_TOKEN")
+        with self.assertRaisesRegex(SystemExit, "is not set"):
+            run_cli(home, "proxy", "--name", "docs", "--url", "https://mcp.example.com/mcp", "--bearer-env", "VERFY_TEST_NOT_SET")
+        with self.assertRaisesRegex(SystemExit, "--name"):
+            run_cli(home, "proxy", "--url", "https://mcp.example.com/mcp")
+        with self.assertRaisesRegex(SystemExit, "--name"):
+            run_cli(home, "proxy", "--name", "docs", "--url", "https://mcp.example.com/mcp", "--", "node", "x.js")
 
 
 class SessionTests(unittest.TestCase):

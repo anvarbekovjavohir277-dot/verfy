@@ -6,6 +6,7 @@
       "version": 1,
       "servers": {
         "filesystem": {
+          "package": "pkg@1.2.3",              # the pinned package from the config, when it has one
           "server_version": "1.2.3",           # what the server reported when it was locked, for `verfy lock rollback`
           "tools": {
             "read_file": {

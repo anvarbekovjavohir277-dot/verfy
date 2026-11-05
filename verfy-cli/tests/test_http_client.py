@@ -294,6 +294,38 @@ class GatewayOverBridgeTests(unittest.TestCase):
         p.stdout.close()
         return answers
 
+    def test_proxy_url_keeps_the_token_in_the_environment(self):
+        srv, home = start(self), tmpdir(self)
+        token = TOKEN.removeprefix("Bearer ")
+        run_cli(home, "init", "--updates", "manual", "--no-hook")
+        env = {**os.environ, "VERFY_HOME": str(home), "PYTHONPATH": str(ROOT / "src"), "MCP_TOKEN": token}
+        env.pop(HEADERS_ENV, None)
+        cmd = [sys.executable, "-m", "verfy", "proxy", "--name", "docs", "--url", srv.url, "--bearer-env", "MCP_TOKEN"]
+        msgs = [rpc(1, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}),
+                {"jsonrpc": "2.0", "method": "notifications/initialized"}, rpc(2, "tools/list")]
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=home)
+        names = []
+        for m in msgs:
+            p.stdin.write(json.dumps(m).encode() + b"\n")
+            p.stdin.flush()
+            while "id" in m:
+                got = json.loads(p.stdout.readline())
+                if got.get("id") == 2:
+                    names = [t["name"] for t in got["result"]["tools"]]
+                if got.get("id") == m["id"]:
+                    break
+        p.stdin.close()
+        p.wait(timeout=20)
+        p.stdout.close()
+        logged = p.stderr.read().decode("utf-8", "replace")
+        p.stderr.close()
+        self.assertIn("search", names)
+        self.assertIn(f"Bearer {token}", [h.get("Authorization") for h in srv.seen])
+        self.assertNotIn(token, logged)
+        for f in home.rglob("*"):
+            if f.is_file():
+                self.assertNotIn(token, f.read_text("utf-8", "replace"), f)
+
     def test_a_remote_tool_call_passes_the_gateway_and_leaves_a_receipt(self):
         srv, home = start(self), tmpdir(self)
         got = self.session(srv, home, rpc(2, "tools/list"), rpc(3, "tools/call", {"name": "search", "arguments": {"q": "x"}}))

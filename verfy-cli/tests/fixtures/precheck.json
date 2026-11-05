@@ -2821,6 +2821,241 @@
    }
   },
   {
+   "name": "after outside text: git push asks",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "git push origin main"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "shell",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: a site on the allow list is fine",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://docs.python.org/3/"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    },
+    "network": {
+     "allow": [
+      "*.python.org"
+     ]
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "network",
+    "rules": []
+   }
+  },
+  {
+   "name": "after outside text: a site off the allow list asks",
+   "action": {
+    "tool": "fetch",
+    "arguments": {
+     "url": "https://example.org"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    },
+    "network": {
+     "allow": [
+      "*.python.org"
+     ]
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "network",
+    "rules": [
+     "VFY-NET-002",
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: curl to a listed site still asks",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "curl https://docs.python.org/3/"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    },
+    "network": {
+     "allow": [
+      "*.python.org"
+     ]
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "shell",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: reading a key file asks",
+   "action": {
+    "tool": "Read",
+    "arguments": {
+     "file_path": "/home/you/project/server.pem"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "file_read",
+    "rules": [
+     "VFY-FS-003",
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: cat of a key file asks",
+   "action": {
+    "tool": "Bash",
+    "arguments": {
+     "command": "cat server.pem"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "shell",
+    "rules": [
+     "VFY-SESSION-001",
+     "VFY-SH-007"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: a key file denied in deny mode",
+   "action": {
+    "tool": "Read",
+    "arguments": {
+     "file_path": "/home/you/project/server.pem"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "deny"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "deny",
+    "kind": "file_read",
+    "rules": [
+     "VFY-FS-003",
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: a write outside the project asks",
+   "action": {
+    "tool": "Write",
+    "arguments": {
+     "file_path": "/home/you/notes.txt",
+     "content": "x"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    },
+    "files": {
+     "outside_workspace": "allow"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "ask",
+    "kind": "file_write",
+    "rules": [
+     "VFY-SESSION-001"
+    ]
+   }
+  },
+  {
+   "name": "after outside text: reading a plain file is fine",
+   "action": {
+    "tool": "Read",
+    "arguments": {
+     "file_path": "/home/you/project/notes.txt"
+    }
+   },
+   "policy": {
+    "session": {
+     "after_outside_text": "ask"
+    }
+   },
+   "context": {
+    "untrusted": "WebFetch"
+   },
+   "expect": {
+    "verdict": "allow",
+    "kind": "file_read",
+    "rules": []
+   }
+  },
+  {
    "name": "clean session: a network call is fine",
    "action": {
     "tool": "fetch",

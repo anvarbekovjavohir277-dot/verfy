@@ -517,11 +517,11 @@ def _verfy_command(s: dict) -> dict | None:
     return None
 
 
-def check_url(url: str, ctx: _Ctx) -> list[dict]:
-    out: list[dict] = []
+def _url_parts(url: str) -> tuple[str, str, str] | None:
+    """(host, userinfo, path and query) of a URL, or None if it is not one."""
     m = re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://([^/?#]*)([^#]*)", url)
     if not m:
-        return out
+        return None
     authority, rest = m.group(1), m.group(2)
     userinfo = ""
     if "@" in authority:
@@ -531,7 +531,20 @@ def check_url(url: str, ctx: _Ctx) -> list[dict]:
         host = host[1:].split("]", 1)[0]
     else:
         host = host.split(":", 1)[0]
-    host = host.lower().rstrip(".")
+    return host.lower().rstrip("."), userinfo, rest
+
+
+def _on_allow_list(url: str, ctx: _Ctx) -> bool:
+    parts = _url_parts(url)
+    return bool(parts) and any(host_match(pat, parts[0]) for pat in ctx.p["network"]["allow"])
+
+
+def check_url(url: str, ctx: _Ctx) -> list[dict]:
+    out: list[dict] = []
+    parts = _url_parts(url)
+    if not parts:
+        return out
+    host, userinfo, rest = parts
     net = ctx.p["network"]
     for pat in net["deny"]:
         if host_match(pat, host):
@@ -573,12 +586,22 @@ def _delete_targets(t: str, s: dict, ctx: _Ctx, cwd: str | None) -> list[dict]:
     return []
 
 
-def _git(args: list[str]) -> str | None:
+def _git_command(args: list[str]) -> list[str]:
+    """The git subcommand and what follows it, past git's own options."""
     a = list(args)
     while a and a[0].startswith("-"):
         opt = a.pop(0)
         if opt in ("-C", "-c", "--git-dir", "--work-tree") and a:
             a.pop(0)
+    return a
+
+
+def _pushes(cmd: str) -> bool:
+    return any(s["name"] == "git" and _git_command(s["args"])[:1] == ["push"] for s in parse_shell(cmd))
+
+
+def _git(args: list[str]) -> str | None:
+    a = _git_command(args)
     if not a:
         return None
     sub, rest = a[0], a[1:]
@@ -865,10 +888,12 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
     if not trusted:
         if "glob" in words(tool) and isinstance(args.get("pattern"), str) and rx(SECRET["token"], "i").search(args["pattern"]):
             out.append(_f("VFY-SELF-006", "deny", f"Lists Verfy's signing key or device token ({args['pattern']})." + SECRET_MSG))
+        touchy = False  # a key file read, or a write outside the project
         if kind == "shell":
             cmd = next(_command_string(args[k]) for k in args if str(k).lower() in PATTERNS["command_keys"] and _command_string(args[k]) is not None)
             fs, network = check_shell(cmd, ctx)
             out.extend(fs)
+            touchy = _pushes(cmd) or any(f["rule"] in ("VFY-SH-007", "VFY-SH-008") for f in fs)
         elif kind == "sql":
             sql = next(args[k] for k in args if str(k).lower() in PATTERNS["sql_keys"] and isinstance(args[k], str))
             for rule, verdict, pat, flags, msg in PATTERNS["sql_patterns"]:
@@ -887,6 +912,7 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
                     hit = ctx.sensitive(abs_)
                     if hit:
                         out.append(_f("VFY-FS-003", "ask", f"Reads the sensitive file {p} (`{hit}`)."))
+                        touchy = True
                     continue
                 own = ctx.guards_verfy(abs_)
                 if own:
@@ -903,15 +929,16 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
                 if hit:
                     out.append(_f("VFY-FS-003", "ask", f"Changes the sensitive file {p} (`{hit}`)."))
                 if not is_within(abs_, ctx.ws) and not ctx.allowed_outside(abs_):
+                    touchy = True
                     v = pol["files"].get("outside_workspace", "ask")
                     if v in ("ask", "deny"):
                         out.append(_f("VFY-FS-002", v, f"Changes {p}, which is outside the project."))
         elif kind == "payment":
             out.extend(_check_payment(args, pol, context))
+        urls = [v for k, v in args.items() if str(k).lower() in PATTERNS["url_keys"] and isinstance(v, str)]
         if kind in ("network", "message"):
-            for k, v in args.items():
-                if str(k).lower() in PATTERNS["url_keys"] and isinstance(v, str):
-                    out.extend(check_url(v, ctx))
+            for v in urls:
+                out.extend(check_url(v, ctx))
         for path_, text in flatten_strings(args):
             for s in scan_secrets(text):
                 if s["severity"] == "high" and (network or kind in ("network", "message", "payment")):
@@ -919,7 +946,8 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
                 else:
                     out.append(_f("VFY-SEC-001", "ask", f"Contains a {s['label']} (in `{path_ or 'arguments'}`)."))
         after = (pol.get("session") or {}).get("after_outside_text", "off")
-        if context.get("untrusted") and after in ("ask", "deny") and (network or kind in ("network", "message", "payment", "file_delete")):
+        listed_site = kind == "network" and bool(urls) and all(_on_allow_list(u, ctx) for u in urls)
+        if context.get("untrusted") and after in ("ask", "deny") and (touchy or (network and not listed_site) or kind in ("message", "payment", "file_delete")):
             out.append(_f("VFY-SESSION-001", after, f"This session read outside text ({context['untrusted']}), which can carry instructions, so a person has to approve this."))
 
     for r in pol.get("rules", []):

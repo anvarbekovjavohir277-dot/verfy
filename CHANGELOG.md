@@ -2,6 +2,13 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.11.0 (2026-11-05)
+
+- **`verfy proxy --name NAME --url https://...`.** Puts a remote server behind the gateway in one command. `--bearer-env VAR` reads a bearer token from the environment, so it is not on the command line, in `verfy.lock`, in receipts or in logs, and Verfy refuses to send it over plain http. Scans and `verfy lock check` treat the entry as the remote server it is. OAuth is not supported yet.
+- **The package in the lock.** `verfy lock check --update` writes the pinned package (`pkg@1.2.3`) next to the version the server reports, and `verfy lock rollback` goes back to that package, because a server's own version number is often not its package's.
+- **`verfy scan` checks the sandbox.** With Claude Code on the machine, `--config` and `--discover` add what `verfy sandbox status` finds, without changing the exit code. Two new findings: the Docker socket is open (VFY-SBX-007), and allowed domains reach most of the internet, such as `*` or `*.com` (VFY-SBX-008).
+- **Session rules follow the list more closely.** After outside text, `git push`, reading a key file and writing outside the project now wait for a person too. A request to a site on `network.allow` no longer does. Both engines share the new cases.
+
 ## 0.10.0 (2026-11-04)
 
 - **Work with Claude Code's sandbox.** Verfy is not a sandbox, and the two cover different ground: Claude Code's sandbox wraps shell commands at the operating system level, so it holds a script the agent wrote, and it leaves out MCP servers, hooks and the built-in file and web tools, which Verfy watches. It is off by default, and when on it still lets commands read most of the machine. `verfy sandbox status` reports what the settings leave open, and `verfy sandbox sync --write` turns it on, closes the retry outside it, blocks credential paths and `~/.verfy` from reads, and allows the hosts in your Verfy policy. It adds and never removes, and keeps a backup. The sandbox does not run on native Windows. The guard denies `verfy sandbox sync --write` when the agent runs it.

@@ -66,6 +66,17 @@ def server_url(spec: dict) -> str | None:
     return None
 
 
+def behind_gateway(spec: dict) -> dict | None:
+    """`verfy proxy --url URL` written as the remote entry it stands for, so scans and `lock check` treat it as one."""
+    args = [str(a) for a in spec.get("args") or []]
+    if Path(str(spec.get("command") or "")).name.lower().removesuffix(".exe") != "verfy" or "--url" not in args[:-1]:
+        return None
+    remote = {"url": args[args.index("--url") + 1]}
+    if "--bearer-env" in args[:-1]:
+        remote["bearer_token_env_var"] = args[args.index("--bearer-env") + 1]
+    return remote
+
+
 def load_config(p: Path) -> Any:
     """Parse a JSON config, or a TOML one (Codex CLI) on Python 3.11 and newer."""
     if p.suffix.lower() == ".toml":
@@ -130,6 +141,13 @@ def _pinned(spec: str, ecosystem: str) -> bool:
         name = spec[1:] if spec.startswith("@") else spec
         return "@" in name and not name.endswith("@latest")
     return bool(re.search(r"(==|@)\d", spec))
+
+
+def written_version(pkg: str, ecosystem: str) -> str | None:
+    """The exact version a package spec names, or None if it names none."""
+    if not _pinned(pkg, ecosystem):
+        return None
+    return pkg.rsplit("@", 1)[1] if ecosystem == "npm" else re.split(r"==|@", pkg, maxsplit=1)[1]
 
 
 def package_in(spec: dict) -> tuple[int, str, str] | None:
@@ -249,13 +267,14 @@ def check_server(name: str, spec: dict, local: set[str] | None = None) -> list[d
                 src = args[i + 1].split(":")[0]
                 if src in ("/", "~", "$HOME", "${HOME}", "C") or src.rstrip("/\\") in ("/home", "/Users", "/root"):
                     out.append(_f("VFY-CFG-005", "high", f"Container mounts `{src}`, giving it the whole disk or home folder.", "args"))
-    url = server_url(spec)
+    remote = behind_gateway(spec) or spec
+    url = server_url(remote)
     if url:
         u = urlparse(url)
         if u.scheme == "http" and (u.hostname or "") not in LOCAL_HOSTS:
             out.append(_f("VFY-CFG-002", "high", f"Talks to {u.hostname} over plain http, so anyone on the network can read or change tool calls.", "url"))
         headers = spec.get("headers") if isinstance(spec.get("headers"), dict) else {}
-        if (u.hostname or "") not in LOCAL_HOSTS and not any(k.lower() == "authorization" for k in headers) and not spec.get("oauth") and not spec.get("auth"):
+        if (u.hostname or "") not in LOCAL_HOSTS and not any(k.lower() == "authorization" for k in headers) and not spec.get("oauth") and not spec.get("auth") and not remote.get("bearer_token_env_var"):
             out.append(_f("VFY-CFG-007", "info", "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.", "headers"))
     texts: list[tuple[str, str]] = [("args", a) for a in launch_args]
     for key in ("env", "headers"):
@@ -291,7 +310,7 @@ def scan_configs(found: list[dict]) -> dict:
                 summary[f["severity"]] = summary.get(f["severity"], 0) + 1
             servers.append({
                 "server": name, "config": cfg["path"], "source": cfg["source"],
-                "transport": "http" if server_url(spec) else "stdio",
+                "transport": "http" if server_url(behind_gateway(spec) or spec) else "stdio",
                 "findings": findings,
             })
     return {

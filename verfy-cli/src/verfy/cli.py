@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import __version__
 from . import agentfiles
@@ -312,6 +313,9 @@ def print_config_scan(report: dict) -> None:
         print(f"  {mark:<8} {s['server']}  [{s['transport']}]")
         for f in s["findings"]:
             print(f"           {c(f['severity'].upper().ljust(8), SCOL[f['severity']])} {f['rule']}  {f['message']}")
+    if report.get("sandbox"):
+        rules = ", ".join(f["rule"] for f in report["sandbox"])
+        print(f"  sandbox  Claude Code's sandbox leaves things open ({rules}): `verfy sandbox status`. This does not change the exit code.")
 
 
 def _stdio_launch(spec: dict) -> tuple[list[str], dict] | None:
@@ -351,6 +355,7 @@ def _remote_target(spec: dict) -> tuple[str, dict[str, str]]:
 
 def _live_server(spec: dict, timeout: float) -> dict | None:
     """Ask one configured server for its tools: start a stdio server, or call a remote one. None if the entry has neither."""
+    spec = cfgscan.behind_gateway(spec) or spec
     launch = _stdio_launch(spec)
     if launch is not None:
         return list_tools(launch[0], timeout=timeout, env=launch[1])
@@ -392,6 +397,8 @@ def cmd_scan(args) -> int:
                     raise ValueError(f"no such config file: {args.config}")
                 found = cfgscan.read_configs([("given", Path(args.config))])
             static = cfgscan.scan_configs(found)
+            if _claude_code_present():
+                static["sandbox"] = sandboxes.check(sandboxes.effective(Path.cwd(), Path.home()), [])
             if not args.live:
                 if args.json:
                     print(json.dumps(static, indent=2, ensure_ascii=False))
@@ -457,9 +464,27 @@ def cmd_check(args) -> int:
 
 # ---------------------------------------------------------------- proxy / wrap
 
+def _remote_command(args) -> list[str]:
+    """The bridge `verfy proxy --url` starts. A token stays in the environment: a command line is visible to other programs."""
+    if args.cmd or not args.name:
+        raise SystemExit("verfy proxy: use --url with --name and without a command after `--`")
+    u = urlparse(args.url)
+    if args.bearer_env:
+        if args.bearer_env not in os.environ:
+            raise SystemExit(f"verfy proxy: {args.bearer_env} is not set")
+        if u.scheme != "https" and (u.hostname or "") not in cfgscan.LOCAL_HOSTS:
+            raise SystemExit("verfy proxy: a token only goes over https://, because anyone on the network can read plain http")
+        headers = json.loads(os.environ.get(bridges.HEADERS_ENV) or "{}")
+        os.environ[bridges.HEADERS_ENV] = json.dumps({**headers, "Authorization": "Bearer ${" + args.bearer_env + "}"})
+    exe = shutil.which("verfy")
+    return [*([exe] if exe else [sys.executable, "-m", "verfy"]), "bridge", "--url", args.url]
+
+
 def cmd_proxy(args) -> int:
+    if args.url:
+        args.cmd = _remote_command(args)
     if not args.cmd:
-        raise SystemExit("verfy proxy: put the MCP server command after `--`")
+        raise SystemExit("verfy proxy: put the MCP server command after `--`, or give --url")
     pol = get_policy(args)
     key = get_key(args.key, create=True)
     name = args.name or Path(args.cmd[0]).name
@@ -914,10 +939,10 @@ def cmd_lock_rollback(args) -> int:
     if place is None:
         raise SystemExit(f"verfy lock rollback: `{args.server}` is not started through npx, bunx, uvx or pipx, so Verfy cannot choose its version. "
                          "A remote server runs whatever its owner deployed.")
-    version = args.to or entry.get("server_version")
+    index, ecosystem, written = place
+    version = args.to or cfgscan.written_version(str(entry.get("package") or ""), ecosystem) or entry.get("server_version")
     if not version:
         raise SystemExit(f"verfy lock rollback: {args.lock} does not say which version `{args.server}` was. Pass --to VERSION.")
-    index, ecosystem, written = place
     pinned = cfgscan.pin_package(written, version, ecosystem)
     trial = json.loads(json.dumps(spec))
     trial["args"][index] = pinned
@@ -979,6 +1004,11 @@ def cmd_lock_check(args) -> int:
         if isinstance(live.get("server"), dict) and isinstance(live["server"].get("version"), str):
             versions[name] = live["server"]["version"]
         rows += [{"server": name, **r} for r in locks.compare(lock, name, current[name])]
+    packages = {}
+    for name in current:
+        place = cfgscan.package_in(servers[name])
+        if place and cfgscan.written_version(place[2], place[1]):
+            packages[name] = place[2]
     gone = [s for s in lock["servers"] if s not in servers and (not wanted or s in wanted)]
     for name in gone:
         rows += [{"server": name, **r} for r in locks.compare(lock, name, [])]
@@ -990,7 +1020,7 @@ def cmd_lock_check(args) -> int:
         file_rows = _file_rows(lock["files"], files_now, root, user=False)
 
     if args.update:
-        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows, versions)
+        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows, versions, packages)
 
     for r in rows:
         if r["status"] in ("drift", "new"):
@@ -1042,7 +1072,8 @@ def cmd_lock_check(args) -> int:
 
 
 def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[str], rows: list[dict], errors: list[str],
-                       files_now: dict | None = None, file_rows: list[dict] | None = None, versions: dict[str, str] | None = None) -> int:
+                       files_now: dict | None = None, file_rows: list[dict] | None = None, versions: dict[str, str] | None = None,
+                       packages: dict[str, str] | None = None) -> int:
     if errors:
         for e in errors:
             print(f"verfy lock check: could not read tools from {e}", file=sys.stderr)
@@ -1078,6 +1109,8 @@ def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[s
             entry = lk["servers"].setdefault(name, {"tools": {}})
             if (versions or {}).get(name):
                 entry["server_version"] = versions[name]
+            if (packages or {}).get(name):
+                entry["package"] = packages[name]
             names = set()
             for t in tools:
                 d = locks.definition(t)
@@ -1442,6 +1475,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("proxy", help="run an MCP server behind the Verfy gateway")
     p.add_argument("--name", help="server name used in receipts and verfy.lock")
+    p.add_argument("--url", help="a remote server's Streamable HTTP address, instead of a command after `--`")
+    p.add_argument("--bearer-env", metavar="VAR", help="the environment variable that holds the remote server's bearer token")
     p.add_argument("--policy")
     p.add_argument("--workspace")
     p.add_argument("--ledger")

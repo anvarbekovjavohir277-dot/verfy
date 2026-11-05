@@ -407,7 +407,7 @@ class GatewaySessions(GatewayTests):
         listing = {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
         read = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_file", "arguments": {"path": "notes.txt"}}}
         fetch = {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "fetch_url", "arguments": {"url": "https://example.org"}}}
-        policy = {"session": {"after_outside_text": "ask"}, "lock": {"on_new": "allow"}, "network": {"allow": ["example.org"]}}
+        policy = {"session": {"after_outside_text": "ask"}, "lock": {"on_new": "allow"}}
         got = self.run_gateway([init, listing, read, fetch], policy=policy)
         replies = got[0] if isinstance(got, tuple) else got
         self.assertFalse(replies[3]["result"].get("isError"))

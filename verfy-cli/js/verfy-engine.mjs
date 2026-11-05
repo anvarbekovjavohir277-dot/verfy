@@ -703,17 +703,28 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     return null;
   }
 
-  function checkUrl(url, ctx) {
-    var out = [];
+  function urlParts(url) {
     var m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^\/?#]*)([^#]*)/.exec(url);
-    if (!m) return out;
+    if (!m) return null;
     var authority = m[1], rest = m[2], userinfo = "";
     var at = authority.lastIndexOf("@");
     if (at >= 0) { userinfo = authority.slice(0, at); authority = authority.slice(at + 1); }
     var host = authority;
     if (host.charAt(0) === "[") host = host.slice(1).split("]")[0];
     else host = host.split(":")[0];
-    host = host.toLowerCase().replace(/\.$/, "");
+    return { host: host.toLowerCase().replace(/\.$/, ""), userinfo: userinfo, rest: rest };
+  }
+
+  function onAllowList(url, ctx) {
+    var parts = urlParts(url);
+    return !!parts && ctx.p.network.allow.some(function (p) { return hostMatch(p, parts.host); });
+  }
+
+  function checkUrl(url, ctx) {
+    var out = [];
+    var parts = urlParts(url);
+    if (!parts) return out;
+    var host = parts.host, userinfo = parts.userinfo, rest = parts.rest;
     var net = ctx.p.network, denied = false;
     for (var i = 0; i < net.deny.length; i++) {
       if (hostMatch(net.deny[i], host)) { out.push(F("VFY-NET-001", "deny", "`" + host + "` is on the network deny list (`" + net.deny[i] + "`).")); denied = true; break; }
@@ -749,12 +760,21 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
   }
 
   function shortFlag(x, ch) { return x.charAt(0) === "-" && x.indexOf("--") !== 0 && x.slice(1).indexOf(ch) >= 0; }
-  function gitWhy(args) {
+  function gitCommand(args) {
     var a = args.slice();
     while (a.length && a[0].charAt(0) === "-") {
       var opt = a.shift();
       if (has(["-C", "-c", "--git-dir", "--work-tree"], opt) && a.length) a.shift();
     }
+    return a;
+  }
+
+  function pushes(cmd) {
+    return parseShell(cmd).some(function (s) { return s.name === "git" && gitCommand(s.args)[0] === "push"; });
+  }
+
+  function gitWhy(args) {
+    var a = gitCommand(args);
     if (!a.length) return null;
     var sub = a[0], rest = a.slice(1), ops = operands(rest);
     if (sub === "push") {
@@ -996,6 +1016,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     var network = kind === "network" || kind === "message";
     if (!trusted) {
       var argKeys = Object.keys(args);
+      var touchy = false; // a key file read, or a write outside the project
       if (has(words(tool), "glob") && typeof args.pattern === "string" && rx(PATTERNS.self_protect.secret.token, "i").test(args.pattern)) {
         out.push(F("VFY-SELF-006", "deny", "Lists Verfy's signing key or device token (" + args.pattern + ")." + SECRET_MSG));
       }
@@ -1003,6 +1024,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         var ck = argKeys.filter(function (k) { return has(PATTERNS.command_keys, k.toLowerCase()) && commandString(args[k]) !== null; })[0];
         var res = checkShell(commandString(args[ck]), ctx);
         out = out.concat(res[0]); network = res[1];
+        touchy = pushes(commandString(args[ck])) || res[0].some(function (f) { return f.rule === "VFY-SH-007" || f.rule === "VFY-SH-008"; });
       } else if (kind === "sql") {
         var qk = argKeys.filter(function (k) { return has(PATTERNS.sql_keys, k.toLowerCase()) && typeof args[k] === "string"; })[0];
         PATTERNS.sql_patterns.forEach(function (r) { if (rx(r[2], r[3]).test(args[qk])) out.push(F(r[0], r[1], r[4])); });
@@ -1019,7 +1041,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
           }
           if (reading) {
             h = ctx.sensitive(abs);
-            if (h) out.push(F("VFY-FS-003", "ask", "Reads the sensitive file " + p + " (`" + h + "`)."));
+            if (h) { out.push(F("VFY-FS-003", "ask", "Reads the sensitive file " + p + " (`" + h + "`).")); touchy = true; }
             return;
           }
           var mine = ctx.guardsVerfy(abs);
@@ -1030,13 +1052,15 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
           h = ctx.sensitive(abs);
           if (h) out.push(F("VFY-FS-003", "ask", "Changes the sensitive file " + p + " (`" + h + "`)."));
           if (!isWithin(abs, ctx.ws) && !ctx.allowedOutside(abs)) {
+            touchy = true;
             var v = pol.files.outside_workspace || "ask";
             if (v === "ask" || v === "deny") out.push(F("VFY-FS-002", v, "Changes " + p + ", which is outside the project."));
           }
         });
       } else if (kind === "payment") out = out.concat(checkPayment(args, pol, context));
+      var urls = argKeys.filter(function (k) { return has(PATTERNS.url_keys, k.toLowerCase()) && typeof args[k] === "string"; }).map(function (k) { return args[k]; });
       if (kind === "network" || kind === "message") {
-        argKeys.forEach(function (k) { if (has(PATTERNS.url_keys, k.toLowerCase()) && typeof args[k] === "string") out = out.concat(checkUrl(args[k], ctx)); });
+        urls.forEach(function (u) { out = out.concat(checkUrl(u, ctx)); });
       }
       flattenStrings(args).forEach(function (pt) {
         scanSecrets(pt[1]).forEach(function (s) {
@@ -1045,7 +1069,8 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         });
       });
       var after = (pol.session || {}).after_outside_text || "off";
-      if (context.untrusted && (after === "ask" || after === "deny") && (network || has(["network", "message", "payment", "file_delete"], kind))) {
+      var listedSite = kind === "network" && urls.length > 0 && urls.every(function (u) { return onAllowList(u, ctx); });
+      if (context.untrusted && (after === "ask" || after === "deny") && (touchy || (network && !listedSite) || has(["message", "payment", "file_delete"], kind))) {
         out.push(F("VFY-SESSION-001", after, "This session read outside text (" + context.untrusted + "), which can carry instructions, so a person has to approve this."));
       }
     }

@@ -42,13 +42,22 @@ def effective(cwd: Path, home: Path) -> dict:
     def first(key: str):
         return next((s[key] for s in found if key in s), None)
 
+    nets = [s["network"] for s in found if isinstance(s.get("network"), dict)]
     return {
         "enabled": first("enabled"),
         "allowUnsandboxedCommands": first("allowUnsandboxedCommands"),
         "excludedCommands": sorted({str(x) for s in found for x in _lists(s, "excludedCommands")}),
         "denyRead": sorted({str(x) for s in found for x in _lists(s.get("filesystem"), "denyRead")}),
         "allowedDomains": sorted({str(x) for s in found for x in _lists(s.get("network"), "allowedDomains")}),
+        "allowUnixSockets": sorted({str(x) for n in nets for x in _lists(n, "allowUnixSockets")}),
+        "allowAllUnixSockets": next((n["allowAllUnixSockets"] for n in nets if "allowAllUnixSockets" in n), None),
     }
+
+
+def _too_wide(domain: str) -> bool:
+    """`*`, or a wildcard over a whole top-level domain such as `*.com`."""
+    host = domain.rsplit(":", 1)[0] if domain.count(":") == 1 else domain
+    return host in ("*", "*.*") or (host.startswith("*.") and "." not in host[2:])
 
 
 def _f(rule: str, severity: str, message: str) -> dict:
@@ -69,6 +78,11 @@ def check(state: dict, allowed_hosts: list[str], windows: bool = os.name == "nt"
     hosts = [h for h in allowed_hosts if h not in state["allowedDomains"]]
     if hosts:
         out.append(_f("VFY-SBX-004", "low", "Your Verfy policy allows " + ", ".join(hosts) + ", but the sandbox does not, so commands will stop to ask."))
+    if state.get("allowAllUnixSockets") is True or any(s.endswith("docker.sock") for s in state.get("allowUnixSockets", [])):
+        out.append(_f("VFY-SBX-007", "high", "Commands can reach the Docker socket, and whoever controls Docker controls the machine, sandbox or not."))
+    wide = [d for d in state["allowedDomains"] if _too_wide(d)]
+    if wide:
+        out.append(_f("VFY-SBX-008", "medium", "These allowed domains reach most of the internet: " + ", ".join(wide) + ". List the hosts you need."))
     if state["excludedCommands"]:
         out.append(_f("VFY-SBX-005", "low", "These run outside the sandbox: " + ", ".join(state["excludedCommands"]) + "."))
     return out

@@ -34,7 +34,7 @@ verfy lock rollback filesystem --write       # pins that version in .mcp.json (a
 verfy lock rollback filesystem --to 1.2.3    # another version
 ```
 
-The config changes only if every tool of that release matches the lock. It works for servers started through npx, bunx, uvx and pipx; a remote server runs whatever its owner deployed.
+The config changes only if every tool of that release matches the lock. It works for servers started through npx, bunx, uvx and pipx. A remote server has no earlier version to go back to, so behind the gateway its changed tool stays blocked until a person approves it.
 
 ## Update
 
@@ -52,6 +52,8 @@ verfy update --auto on          # once a day, when you run a verfy command, upda
 claude mcp add filesystem -- verfy proxy --name filesystem -- npx -y @modelcontextprotocol/server-filesystem@2025.8.21 ~/project
 verfy wrap ~/.cursor/mcp.json --write      # wrap every server in a config, local and remote (backup kept)
 ```
+
+For one remote server, `verfy proxy --name docs --url https://mcp.example.com/mcp --bearer-env DOCS_TOKEN` does it directly: the agent talks stdio to Verfy, and Verfy talks HTTP to the server. The token stays in the environment. It is never on a command line or in `verfy.lock`, and Verfy refuses to send it over plain http. OAuth is not supported yet.
 
 A remote server goes behind the gateway through `verfy bridge`, which forwards to its Streamable HTTP address. Its headers move to the entry's `env`, so a key is not on a command line. Not covered yet: the older SSE transport, servers that sign in with OAuth in your MCP client, and messages a server sends outside an answer to a request.
 
@@ -115,7 +117,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.10.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.11.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -157,7 +159,7 @@ Devices enrolled with 0.8.0 or later upload on their own: after the hook or the 
 Verfy is not a sandbox. Claude Code's own sandbox holds shell commands at the operating system level, including a script the agent wrote, which Verfy cannot follow. It does not cover MCP servers, hooks or the built-in file and web tools, which Verfy watches, so use both.
 
 ```bash
-verfy sandbox status              # what the settings leave open (exit 1 if anything)
+verfy sandbox status              # what the settings leave open (exit 1 if anything), also shown by `verfy scan --config`
 verfy sandbox sync                # shows the settings it would add
 verfy sandbox sync --write        # ~/.claude/settings.json, a backup is kept; --project for ./.claude/settings.json
 ```
@@ -172,7 +174,7 @@ A web page or a tool's answer can carry instructions for the agent. This setting
 { "session": { "after_outside_text": "ask" } }
 ```
 
-Once a session has read outside text (a network call, `WebSearch`, or any MCP tool you have not listed in `tools.trust`), network calls, messages, payments and deletes get `ask` (or `deny`), rule VFY-SESSION-001. Editing files and running tests go on. No model reads the text: Verfy only notices the order of events. It is off by default; the `strict` template sets `deny`.
+Once a session has read outside text (a network call, `WebSearch`, or any MCP tool you have not listed in `tools.trust`), these get `ask` (or `deny`), rule VFY-SESSION-001: requests to sites not on `network.allow`, `git push`, reading a key file, writing outside the project, messages, payments and deletes. Each decision goes into a receipt with that rule. Editing project files and running tests go on. No model reads the text: Verfy only notices the order of events. It is off by default; the `strict` template sets `deny`.
 
 ## Policy
 
