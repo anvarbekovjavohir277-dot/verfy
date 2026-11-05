@@ -223,8 +223,12 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     if (tools.length !== data.length) throw new Error("every tool must be a JSON object");
     return tools;
   }
+  // pinned when a server sends them: clients act on annotations, and a title or output schema can reach the model
+  var PINNED_EXTRAS = ["title", "annotations", "outputSchema"];
   function toolPin(tool) {
-    return digest({ name: tool.name !== undefined ? tool.name : "", description: tool.description || "", inputSchema: tool.inputSchema !== undefined ? tool.inputSchema : null });
+    var d = { name: tool.name !== undefined ? tool.name : "", description: tool.description || "", inputSchema: tool.inputSchema !== undefined ? tool.inputSchema : null };
+    PINNED_EXTRAS.forEach(function (k) { if (tool[k] !== undefined && tool[k] !== null) d[k] = tool[k]; });
+    return digest(d);
   }
   function capabilities(tool) {
     var nameWords = setOf(words(tool.name || "")), joined = words(tool.name || "").join("_");
@@ -356,7 +360,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
 
   /* ============================================================ pre-check */
   var SHELLS = ["sh", "bash", "zsh", "dash", "ksh", "fish"];
-  var WRAPPERS = ["nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate"];
+  var WRAPPERS = ["nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox"];
   var NETWORK_CMDS = ["curl", "wget", "nc", "ncat", "netcat", "scp", "rsync", "ftp", "sftp", "http", "https", "httpie", "telnet", "socat", "aria2c", "Invoke-WebRequest", "iwr", "irm"];
   var READERS = ["cat", "less", "more", "head", "tail", "base64", "xxd", "od", "strings", "grep", "egrep", "rg", "awk", "sed", "cut", "sort", "uniq", "tac", "nl", "bat", "jq", "gpg", "openssl", "cp", "scp", "rsync", "tar", "zip", "7z", "source", "."];
   var SYSTEM_DIRS = ["/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64", "/opt", "/proc", "/root", "/sbin", "/srv", "/sys", "/usr", "/var", "/System", "/Library", "/Applications", "/Users", "/private"];
@@ -495,7 +499,9 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       }
       break;
     }
-    if (argv.length) { s.name = basename(argv[0]); s.args = argv.slice(1); }
+    if (argv.length) { s.name = basename(argv[0]); s.args = argv.slice(1).map(homeArg); }
+    s.out = s.out.map(function (x) { return typeof x === "string" ? homeArg(x) : x; });
+    s.inp = s.inp.map(function (x) { return typeof x === "string" ? homeArg(x) : x; });
     return s;
   }
 
@@ -647,6 +653,11 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
   var SECRET_MSG = " With them an agent can sign its own receipts or upload as this device. Run it yourself if you meant it.";
   // $HOME/x, %USERPROFILE%\x and the like as ~/x, so they resolve like ~
   function homeVars(p) { return p.replace(/^(?:\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE|\$env:HOME)(?=$|[\\/])/i, "~"); }
+  // `$HOME/x` in a command, also after `if=`, so that a path check cannot be walked around by spelling home differently
+  function homeArg(p) {
+    var m = /^((?:if|of)=)(.*)$/.exec(p);
+    return m ? m[1] + homeVars(m[2]) : homeVars(p);
+  }
   function resolvable(p, here) { return p.indexOf("$") < 0 && p.indexOf("`") < 0 && (here !== null || p.charAt(0) === "/" || p.charAt(0) === "~"); }
   // a finding when one command reads, copies or looks for Verfy's signing key or device token
   function verfySecret(s, ctx, here) {
@@ -682,6 +693,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
   function verfyCommand(s) {
     var n = s.name.toLowerCase().replace(/\.exe$/, ""), a = s.args, py = /^python[0-9.]*$|^py$/.test(n);
     if (py && a[0] === "-m" && a[1] === "verfy") { n = "verfy"; a = a.slice(2); }
+    if ((n === "uvx" && a[0] === "verfy") || (n === "pipx" && a[0] === "run" && a[1] === "verfy") || (n === "uv" && a[0] === "tool" && a[1] === "run" && a[2] === "verfy")) {
+      a = a.slice(a.indexOf("verfy") + 1);
+      n = "verfy";
+    }
     if (n === "verfy") {
       var w = a.filter(function (x) { return x.charAt(0) !== "-"; });
       if (w[0] === "lock" && (w[1] === "approve" || w[1] === "add")) return F("VFY-SELF-003", "deny", "`verfy " + w.slice(0, 2).join(" ") + "` approves a tool change for the agent. A person has to review and run it.");
@@ -703,6 +718,20 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     return null;
   }
 
+  // a host written as a number, or as IPv4 inside IPv6, as the address it reaches, so a deny list sees through it
+  function dotted(v) { return [3, 2, 1, 0].map(function (k) { return String(Math.floor(v / Math.pow(256, k)) % 256); }).join("."); }
+  function canonHost(host) {
+    var m = /^(?:0{0,4}:){0,5}:?ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/.exec(host);
+    if (m) return m[1] ? m[1] : dotted(parseInt(m[2], 16) * 65536 + parseInt(m[3], 16));
+    var parts = host.split(".");
+    if (parts.length < 1 || parts.length > 4 || !parts.every(function (x) { return /^(?:0x[0-9a-f]+|[0-7]+|[1-9][0-9]*)$/.test(x); })) return host;
+    var nums = parts.map(function (x) { return x.indexOf("0x") === 0 ? parseInt(x, 16) : (x.length > 1 && x.charAt(0) === "0" ? parseInt(x, 8) : parseInt(x, 10)); });
+    var last = nums.pop();
+    if (nums.some(function (n) { return n > 255; }) || last >= Math.pow(256, 4 - nums.length)) return host;
+    var v = last;
+    nums.forEach(function (n, i) { v += n * Math.pow(256, 3 - i); });
+    return dotted(v);
+  }
   function urlParts(url) {
     var m = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^\/?#]*)([^#]*)/.exec(url);
     if (!m) return null;
@@ -712,7 +741,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     var host = authority;
     if (host.charAt(0) === "[") host = host.slice(1).split("]")[0];
     else host = host.split(":")[0];
-    return { host: host.toLowerCase().replace(/\.$/, ""), userinfo: userinfo, rest: rest };
+    return { host: canonHost(host.toLowerCase().replace(/\.+$/, "")), userinfo: userinfo, rest: rest };
   }
 
   function onAllowList(url, ctx) {
@@ -923,13 +952,15 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         }
       }
     }
+    // run_shell {"args": ["rm", "-rf", "~"]}
+    if (execName && Array.isArray(keys.args) && commandString(keys.args) !== null) return "shell";
     for (i = 0; i < PATTERNS.sql_keys.length; i++) {
       var sk = PATTERNS.sql_keys[i];
       if (typeof keys[sk] === "string" && /^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert)\b/i.test(keys[sk])) return "sql";
     }
     var hasAmount = PATTERNS.amount_keys.some(function (ak) { return num(keys[ak]) !== null && keys[ak] !== undefined; });
     if (hasAmount && (intersects(w, setOf(verbs.payment)) || "currency" in keys || intersects(w, setOf(PATTERNS.capabilities.payment.name)))) return "payment";
-    if (pathKeyPresent) {
+    if (pathKeyPresent || PATTERNS.url_keys.some(function (uk) { return fileUrl(keys[uk]) !== null; })) {
       var sub = typeof keys.command === "string" ? setOf(words(keys.command)) : {};
       var groups = [sub, w];
       for (i = 0; i < groups.length; i++) {
@@ -943,13 +974,26 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     if (intersects(w, setOf(verbs.message)) && keyList.some(function (x) { return has(["to", "recipient", "recipients", "channel", "body", "text", "message", "subject", "chat_id", "content"], x); })) return "message";
     return "other";
   }
+  // the path in a file: URL: a tool that takes `uri` reads the same file as one that takes `path`
+  function fileUrl(v) {
+    if (typeof v !== "string" || v.slice(0, 5).toLowerCase() !== "file:") return null;
+    var p = v.replace(/^file:(?:\/\/[^\/]*)?/i, "");
+    try { return decodeURIComponent(p); } catch (e) { return p; }
+  }
   function pathsOf(args) {
     var out = [];
     Object.keys(args).forEach(function (k) {
-      var lk = String(k).toLowerCase(), v = args[k];
-      if (has(PATTERNS.path_keys, lk)) (Array.isArray(v) ? v : [v]).forEach(function (x) { if (typeof x === "string" && x) out.push([lk, x]); });
+      var lk = String(k).toLowerCase(), v = args[k], vals = Array.isArray(v) ? v : [v];
+      if (has(PATTERNS.path_keys, lk)) vals.forEach(function (x) { if (typeof x === "string" && x) out.push([lk, fileUrl(x) || x]); });
+      else if (has(PATTERNS.url_keys, lk)) vals.forEach(function (x) { if (fileUrl(x)) out.push([lk, fileUrl(x)]); });
     });
     return out;
+  }
+  function shellText(args) {
+    var keys = Object.keys(args);
+    var ck = keys.filter(function (k) { return has(PATTERNS.command_keys, k.toLowerCase()) && commandString(args[k]) !== null; })[0];
+    if (ck !== undefined) return commandString(args[ck]);
+    return commandString(args[keys.filter(function (k) { return k.toLowerCase() === "args"; })[0]]);
   }
   function fmt(x) { return String(Math.round(x * 1e6) / 1e6); }
 
@@ -1021,10 +1065,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         out.push(F("VFY-SELF-006", "deny", "Lists Verfy's signing key or device token (" + args.pattern + ")." + SECRET_MSG));
       }
       if (kind === "shell") {
-        var ck = argKeys.filter(function (k) { return has(PATTERNS.command_keys, k.toLowerCase()) && commandString(args[k]) !== null; })[0];
-        var res = checkShell(commandString(args[ck]), ctx);
+        var cmdText = shellText(args);
+        var res = checkShell(cmdText, ctx);
         out = out.concat(res[0]); network = res[1];
-        touchy = pushes(commandString(args[ck])) || res[0].some(function (f) { return f.rule === "VFY-SH-007" || f.rule === "VFY-SH-008"; });
+        touchy = pushes(cmdText) || res[0].some(function (f) { return f.rule === "VFY-SH-007" || f.rule === "VFY-SH-008"; });
       } else if (kind === "sql") {
         var qk = argKeys.filter(function (k) { return has(PATTERNS.sql_keys, k.toLowerCase()) && typeof args[k] === "string"; })[0];
         PATTERNS.sql_patterns.forEach(function (r) { if (rx(r[2], r[3]).test(args[qk])) out.push(F(r[0], r[1], r[4])); });

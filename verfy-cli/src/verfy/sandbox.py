@@ -32,6 +32,9 @@ BASE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LA
 BASE_ENV_PREFIXES = ("LC_", "XDG_")
 AGENT_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")  # an agent cannot start without its own key
 AGENT_HOSTS = ["api.anthropic.com"]
+# in the folder a command may write to, but these decide what runs later, outside the sandbox
+PROJECT_CONTROL = ["./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude/settings.json", "./.claude/settings.local.json",
+                   "./.cursor/hooks.json", "./.cursor/mcp.json", "./.git/hooks", "./.git/config"]
 AGENT_WRITES = ["~/.claude", "~/.claude.json"]
 
 
@@ -146,7 +149,7 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
             "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),
             "allowRead": [],
             "allowWrite": _unique([".", *(AGENT_WRITES + guarded if agent else []), *writes]),
-            "denyWrite": [] if agent else _unique(guarded),
+            "denyWrite": _unique([*PROJECT_CONTROL, *([] if agent else guarded)]),
         },
     }
 

@@ -47,11 +47,16 @@ def extract_tools(data: Any) -> list[dict]:
     return tools
 
 
+# pinned when a server sends them: clients act on annotations, and a title or output schema can reach the model
+PINNED_EXTRAS = ("title", "annotations", "outputSchema")
+
+
 def tool_pin(tool: dict) -> str:
     return digest({
         "name": tool.get("name", ""),
         "description": tool.get("description", "") or "",
         "inputSchema": tool.get("inputSchema", None),
+        **{k: tool[k] for k in PINNED_EXTRAS if tool.get(k) is not None},
     })
 
 

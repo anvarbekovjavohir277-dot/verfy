@@ -10,7 +10,7 @@
           "server_version": "1.2.3",           # what the server reported when it was locked, for `verfy lock rollback`
           "tools": {
             "read_file": {
-              "digest": "sha256:...",          # sha256 of canonical {name, description, inputSchema}
+              "digest": "sha256:...",          # sha256 of canonical {name, description, inputSchema}, and title, annotations, outputSchema if sent
               "definition": {...},             # the exact definition that was approved, for diffs
               "approved_at": "2026-10-11T09:00:00.000Z",
               "approved_by": "first-use" | "user" | "team"
@@ -39,7 +39,7 @@ from ._util import flatten_strings
 from .canonical import digest
 from .fileio import FileLock, atomic_write
 from .receipts import now_iso
-from .scanner import scan_tool, tool_pin
+from .scanner import PINNED_EXTRAS, scan_tool, tool_pin
 
 LOCK_VERSION = 1
 APPROVERS = ("first-use", "user", "team")
@@ -55,6 +55,7 @@ def definition(tool: dict) -> dict:
         "name": tool.get("name", ""),
         "description": tool.get("description", "") or "",
         "inputSchema": tool.get("inputSchema", None),
+        **{k: tool[k] for k in PINNED_EXTRAS if tool.get(k) is not None},
     }
 
 
@@ -242,6 +243,9 @@ def explain(old: dict | None, new: dict | None) -> dict:
         return _summed([{"what": "tool removed", "risk": "low"}])
 
     changes: list[dict] = []
+    for k, label in (("annotations", "annotations changed: a client may act on these, for example read-only hints"), ("title", "title changed"), ("outputSchema", "output schema changed")):
+        if old.get(k) != new.get(k):
+            changes.append({"what": label, "risk": "medium"})
     if (old.get("description") or "") != (new.get("description") or ""):
         changes.append({"what": "description text changed", "risk": "low"})
         for sentence in added_sentences(old.get("description") or "", new.get("description") or ""):

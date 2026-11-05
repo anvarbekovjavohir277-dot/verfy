@@ -242,9 +242,100 @@
   [
    "VFY-SELF-005",
    "ask",
-   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
+   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\bgit\\s+(?:rm|mv)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
    "i",
    "Touches a file Verfy relies on (hook settings, verfy.lock, the policy or the Verfy install) in a way Verfy cannot follow."
+  ],
+  [
+   "VFY-SH-005",
+   "ask",
+   "\\b(?:ba|z|da|k)?sh\\s+(?:-\\S+\\s+)*<<",
+   "",
+   "Feeds a script straight into a shell."
+  ],
+  [
+   "VFY-SH-005",
+   "ask",
+   "\\b(?:curl|wget)\\b[^\\n]*?(?:\\s-o\\s*|\\s-O\\s*|\\s--output[= ])\\S+[^\\n]*?(?:&&|;)\\s*(?:sudo\\s+)?(?:chmod\\s+\\S*x\\b|(?:ba|z|da|k)?sh\\s|python[0-9.]*\\s|\\./)",
+   "",
+   "Downloads a file and runs it."
+  ],
+  [
+   "VFY-SH-020",
+   "ask",
+   "(?:^|[;&|(]\\s*)(?:\\$\\(|`|\\$\\{?(?!HOME\\b)[A-Za-z_])",
+   "",
+   "The command name is computed when it runs, so Verfy cannot tell what it is."
+  ],
+  [
+   "VFY-SH-021",
+   "ask",
+   "\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php)\\s+(?:-\\S+\\s+)*-[cer]\\b[^\\n]*(?:rmtree|rm_rf|rmSync|rmdirSync|unlink|os\\.remove|exec\\s*\\(|eval\\s*\\(|urlopen|urllib|requests\\.|subprocess|child_process|os\\.system|fetch\\s*\\()",
+   "",
+   "Inline code that deletes, runs or fetches something Verfy cannot follow."
+  ],
+  [
+   "VFY-SH-021",
+   "ask",
+   "\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php)\\s+(?:-\\S+\\s+)*-[cer]\\b[^\\n]*(?:\\.ssh\\b|\\.aws\\b|\\.gnupg\\b|\\.kube\\b|\\.netrc\\b|\\.npmrc\\b|\\.env\\b|id_rsa|id_ed25519|credentials)",
+   "",
+   "Inline code that names a credential file."
+  ],
+  [
+   "VFY-SH-001",
+   "ask",
+   "\\brsync\\b[^\\n]*--delete[^\\n]*\\s(?:~|\\$HOME|\\$\\{HOME\\})/?(?=$|\\s)",
+   "",
+   "rsync --delete into the home folder."
+  ],
+  [
+   "VFY-SH-001",
+   "ask",
+   "\\bmv\\s+(?:-\\S+\\s+)*(?:~|\\$HOME|\\$\\{HOME\\})/?\\s",
+   "",
+   "Moves the home folder."
+  ],
+  [
+   "VFY-SH-003",
+   "ask",
+   "\\b(?:chmod|chown)\\s+-[A-Za-z]*R[A-Za-z]*\\s+\\S+\\s+(?:~|\\$HOME|\\$\\{HOME\\})(?=$|/|\\s)",
+   "",
+   "Changes permissions of the home folder."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bcrontab\\s+(?:-(?!l\\b)\\S*|[^-\\s]\\S*)",
+   "",
+   "Changes scheduled jobs, which run outside this session."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bsystemctl\\s+(?:--user\\s+)?(?:enable|link|edit)\\b|\\blaunchctl\\s+(?:load|bootstrap|submit)\\b",
+   "",
+   "Installs something that starts on its own."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bgit\\b[^\\n;&|]*?(?:\\bconfig\\b[^\\n;&|]*?|\\s-c\\s+)(?:core\\.(?:hookspath|sshcommand|fsmonitor|pager|editor|gitproxy)|alias\\.|credential\\.helper)",
+   "i",
+   "A git setting that runs a command."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bgit\\s+remote\\s+(?:add|set-url)\\b",
+   "",
+   "Points this repository at another remote."
+  ],
+  [
+   "VFY-SH-023",
+   "ask",
+   "\\b(?:docker|podman)\\s+(?:container\\s+)?run\\b[^\\n]*(?:--privileged|--pid[= ]host|(?:\\s-v\\s*|--volume[= ])(?:/:|/var/run/docker\\.sock|(?:~|\\$HOME|\\$\\{HOME\\})[/:])|--mount[= ]\\S*(?:source|src)=(?:/,|/var/run/docker\\.sock))",
+   "",
+   "Gives a container the host's disk or Docker itself."
   ]
  ],
  "sql_patterns": [

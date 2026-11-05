@@ -15,9 +15,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from verfy import cli, hook, sandbox  # noqa: E402
+from verfy import cli, hook, lock, sandbox  # noqa: E402
 from verfy.policy import load_policy  # noqa: E402
 from verfy.precheck import check  # noqa: E402
+from verfy.scanner import tool_pin  # noqa: E402
 
 
 def shell(command):
@@ -153,6 +154,93 @@ class EnvironmentTests(unittest.TestCase):
         got = sandbox.runtime_env(self.OUTSIDE, agent=True)
         self.assertEqual(got["ANTHROPIC_API_KEY"], "k3")
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", got)
+
+
+class AttackRegressionTests(unittest.TestCase):
+    """What an internal attack run got past Verfy. Each one stays closed."""
+
+    def setUp(self):
+        self.pol = load_policy({"home": "/home/you", "workspace": "/home/you/project"})
+
+    def verdict(self, command):
+        return check({"tool": "Bash", "arguments": {"command": command}}, self.pol)["verdict"]
+
+    def test_home_spelled_as_a_variable_is_home(self):
+        for command in ("cat $HOME/.ssh/id_rsa", "cat ${HOME}/.aws/credentials", "dd if=$HOME/.ssh/id_rsa", "base64 $HOME/.ssh/id_rsa"):
+            self.assertNotEqual(self.verdict(command), "allow", command)
+
+    def test_everyday_commands_stay_allowed(self):
+        for command in ("npm test", "git status", "git remote -v", "git config user.name me", "python3 -c 'print(1)'", "node -e 'console.log(1)'", "mv a.txt b.txt",
+                        "rsync -a src/ dst/", "crontab -l", "systemctl status x", "docker run --rm alpine echo hi", "docker run -v $(pwd):/app node:20 npm test",
+                        "curl -o out.json https://example.com/a", "cat README.md", "$HOME/.cargo/bin/cargo build", "git rm old.txt", "pytest -q", "ls -la"):
+            self.assertEqual(self.verdict(command), "allow", command)
+
+    def test_a_pin_covers_what_a_client_acts_on(self):
+        base = {"name": "t", "description": "d", "inputSchema": {"type": "object"}}
+        for extra in ({"annotations": {"readOnlyHint": True}}, {"title": "x"}, {"outputSchema": {"type": "object"}}):
+            self.assertNotEqual(tool_pin({**base, **extra}), tool_pin(base))
+        self.assertEqual(tool_pin(base), tool_pin({**base, "_meta": {"x": 1}}))
+
+    def test_a_lock_keeps_what_the_pin_covers(self):
+        tool = {"name": "t", "description": "d", "inputSchema": {}, "annotations": {"readOnlyHint": True}}
+        self.assertEqual(tool_pin(lock.definition(tool)), tool_pin(tool))
+
+    def test_a_changed_annotation_is_explained(self):
+        old = {"name": "t", "description": "d", "inputSchema": {}}
+        got = lock.explain(old, {**old, "annotations": {"readOnlyHint": True}})
+        self.assertEqual(got["risk"], "medium")
+        self.assertIn("annotations", got["summary"] + str(got["changes"]))
+
+    def test_the_sandbox_closes_what_runs_later(self):
+        deny = sandbox.runtime_settings({})["filesystem"]["denyWrite"]
+        agent = sandbox.runtime_settings({}, agent=True)["filesystem"]["denyWrite"]
+        for path in ("./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude/settings.json", "./.git/hooks", "./.git/config"):
+            self.assertIn(path, deny)
+            self.assertIn(path, agent)
+
+
+class GatewayInputTests(unittest.TestCase):
+    """Only what Verfy could read and check reaches the server."""
+
+    def gateway(self):
+        from verfy.gateway import Gateway
+        g = Gateway.__new__(Gateway)
+        g.sent, g.answers, g.logged = [], [], []
+        g.to_server = g.sent.append
+        g.to_client = g.answers.append
+        g.log = g.logged.append
+        g.elicits, g.pending, g.client_caps = {}, {}, {}
+        g._call = lambda msg: g.sent.append(("checked", msg))
+        g._key = lambda i: repr(i)
+        return g
+
+    def test_a_line_that_is_not_json_is_dropped_and_answered(self):
+        g = self.gateway()
+        g.from_client(b'{"method":"tools/call","id":1,}')
+        self.assertEqual(g.sent, [])
+        self.assertEqual(g.answers[0]["error"]["code"], -32700)
+
+    def test_a_tools_call_without_an_id_goes_nowhere(self):
+        g = self.gateway()
+        g.from_client(b'{"jsonrpc":"2.0","method":"tools/call","params":{"name":"x"}}')
+        self.assertEqual(g.sent, [])
+
+    def test_a_tools_call_in_a_batch_is_checked(self):
+        g = self.gateway()
+        g.from_client(b'[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"x"}}, 5]')
+        self.assertEqual(g.sent[0][0], "checked")
+        self.assertEqual(g.answers[0]["error"]["code"], -32600)
+
+    def test_params_of_the_wrong_type_do_not_stop_it(self):
+        g = self.gateway()
+        g.from_client(b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":["x"]}')
+        g.from_client(b'{"jsonrpc":"2.0","id":2,"method":"resources/read","params":3}')
+        self.assertEqual(len(g.sent), 2)
+
+    def test_blank_lines_are_ignored(self):
+        g = self.gateway()
+        g.from_client(b"  \n")
+        self.assertEqual((g.sent, g.answers), ([], []))
 
 
 class WindowsTests(unittest.TestCase):

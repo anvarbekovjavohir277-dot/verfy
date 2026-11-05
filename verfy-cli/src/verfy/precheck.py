@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import unquote
 
 from ._util import (
     PATTERNS, VERDICT_RANK, first_match, flatten_strings, host_match, is_within, name_match, normpath,
@@ -24,7 +25,7 @@ from .policy import DEFAULT_POLICY, load_policy
 VERSION = "verfy.check/1"
 
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
-WRAPPERS = {"nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate"}
+WRAPPERS = {"nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox"}
 NETWORK_CMDS = {"curl", "wget", "nc", "ncat", "netcat", "scp", "rsync", "ftp", "sftp", "http", "https", "httpie", "telnet", "socat", "aria2c", "Invoke-WebRequest", "iwr", "irm"}
 READERS = {"cat", "less", "more", "head", "tail", "base64", "xxd", "od", "strings", "grep", "egrep", "rg", "awk", "sed", "cut", "sort", "uniq", "tac", "nl", "bat", "jq", "gpg", "openssl", "cp", "scp", "rsync", "tar", "zip", "7z", "source", "."}
 SYSTEM_DIRS = {"/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64", "/opt", "/proc", "/root", "/sbin", "/srv", "/sys", "/usr", "/var", "/System", "/Library", "/Applications", "/Users", "/private"}
@@ -247,7 +248,9 @@ def _normalize(seg: dict) -> dict:
         break
     if argv:
         s["name"] = argv[0].rsplit("/", 1)[-1]
-        s["args"] = argv[1:]
+        s["args"] = [_home_arg(x) for x in argv[1:]]
+    s["out"] = [_home_arg(x) if isinstance(x, str) else x for x in s["out"]]
+    s["inp"] = [_home_arg(x) if isinstance(x, str) else x for x in s["inp"]]
     return s
 
 
@@ -450,6 +453,12 @@ def _home_vars(p: str) -> str:
     return re.sub(r"^(?:\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE|\$env:HOME)(?=$|[\\/])", "~", p, flags=re.I)
 
 
+def _home_arg(p: str) -> str:
+    """`$HOME/x` in a command, also after `if=`, so that a path check cannot be walked around by spelling home differently."""
+    m = re.match(r"^((?:if|of)=)(.*)$", p)
+    return m.group(1) + _home_vars(m.group(2)) if m else _home_vars(p)
+
+
 def _resolvable(p: str, here: str | None) -> bool:
     return "$" not in p and "`" not in p and (here is not None or p.startswith(("/", "~")))
 
@@ -487,6 +496,9 @@ def _verfy_command(s: dict) -> dict | None:
     n, a = s["name"].lower().removesuffix(".exe"), s["args"]
     if re.match(r"^python[0-9.]*$|^py$", n) and a[:2] == ["-m", "verfy"]:
         n, a = "verfy", a[2:]
+    if (n == "uvx" and a[:1] == ["verfy"]) or (n == "pipx" and a[:2] == ["run", "verfy"]) or (n == "uv" and a[:3] == ["tool", "run", "verfy"]):
+        a = a[a.index("verfy") + 1:]
+        n = "verfy"
     if n == "verfy":
         words_ = [x for x in a if not x.startswith("-")]
         if words_[:2] in (["lock", "approve"], ["lock", "add"]):
@@ -517,6 +529,25 @@ def _verfy_command(s: dict) -> dict | None:
     return None
 
 
+def _canon_host(host: str) -> str:
+    """A host written as a number, or as IPv4 inside IPv6, as the address it reaches, so a deny list sees through it."""
+    m = re.fullmatch(r"(?:0{0,4}:){0,5}:?ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))", host)
+    if m:
+        if m.group(1):
+            return m.group(1)
+        v = int(m.group(2), 16) * 65536 + int(m.group(3), 16)
+        return ".".join(str(v // 256 ** k % 256) for k in (3, 2, 1, 0))
+    parts = host.split(".")
+    if not 1 <= len(parts) <= 4 or not all(re.fullmatch(r"0x[0-9a-f]+|[0-7]+|[1-9][0-9]*", x) for x in parts):
+        return host
+    nums = [int(x, 16) if x.startswith("0x") else int(x, 8) if len(x) > 1 and x[0] == "0" else int(x) for x in parts]
+    last = nums.pop()
+    if any(n > 255 for n in nums) or last >= 256 ** (4 - len(nums)):
+        return host
+    v = last + sum(n * 256 ** (3 - i) for i, n in enumerate(nums))
+    return ".".join(str(v // 256 ** k % 256) for k in (3, 2, 1, 0))
+
+
 def _url_parts(url: str) -> tuple[str, str, str] | None:
     """(host, userinfo, path and query) of a URL, or None if it is not one."""
     m = re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://([^/?#]*)([^#]*)", url)
@@ -531,7 +562,7 @@ def _url_parts(url: str) -> tuple[str, str, str] | None:
         host = host[1:].split("]", 1)[0]
     else:
         host = host.split(":", 1)[0]
-    return host.lower().rstrip("."), userinfo, rest
+    return _canon_host(host.lower().rstrip(".")), userinfo, rest
 
 
 def _on_allow_list(url: str, ctx: _Ctx) -> bool:
@@ -800,13 +831,15 @@ def classify(tool: str, args: dict) -> str:
             if w & exec_words or k != "command" or re.search(r"[\s|;&<>$]", cmd):
                 if not (k == "command" and set(keys) & set(PATTERNS["path_keys"]) and not (w & exec_words)):
                     return "shell"
+    if w & exec_words and isinstance(keys.get("args"), list) and _command_string(keys["args"]) is not None:
+        return "shell"  # run_shell {"args": ["rm", "-rf", "~"]}
     for k in PATTERNS["sql_keys"]:
         if isinstance(keys.get(k), str) and re.match(r"^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert)\b", keys[k], re.I):
             return "sql"
     has_amount = any(_num(keys.get(k)) is not None for k in PATTERNS["amount_keys"])
     if has_amount and (w & set(verbs["payment"]) or "currency" in keys or w & set(PATTERNS["capabilities"]["payment"]["name"])):
         return "payment"
-    if any(k in keys for k in PATTERNS["path_keys"]):
+    if any(k in keys for k in PATTERNS["path_keys"]) or any(_file_url(keys.get(k)) for k in PATTERNS["url_keys"]):
         sub = set(words(keys["command"])) if isinstance(keys.get("command"), str) else set()
         for vw in (sub, w):
             if vw & set(verbs["delete"]):
@@ -823,14 +856,30 @@ def classify(tool: str, args: dict) -> str:
     return "other"
 
 
+def _file_url(v: Any) -> str | None:
+    """The path in a file: URL. A tool that takes `uri` reads the same file as one that takes `path`."""
+    if not isinstance(v, str) or not v[:5].lower() == "file:":
+        return None
+    return unquote(re.sub(r"^file:(?://[^/]*)?", "", v, flags=re.I))
+
+
 def _paths(args: dict) -> list[tuple[str, str]]:
     out = []
     for k, v in args.items():
         lk = str(k).lower()
+        vals = v if isinstance(v, list) else [v]
         if lk in PATTERNS["path_keys"]:
-            vals = v if isinstance(v, list) else [v]
-            out.extend((lk, x) for x in vals if isinstance(x, str) and x)
+            out.extend((lk, _file_url(x) or x) for x in vals if isinstance(x, str) and x)
+        elif lk in PATTERNS["url_keys"]:
+            out.extend((lk, _file_url(x)) for x in vals if _file_url(x))
     return out
+
+
+def _shell_text(args: dict) -> str:
+    for k in args:
+        if str(k).lower() in PATTERNS["command_keys"] and _command_string(args[k]) is not None:
+            return _command_string(args[k])
+    return next(_command_string(args[k]) for k in args if str(k).lower() == "args")
 
 
 # ---------------------------------------------------------------- main entry
@@ -890,7 +939,7 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
             out.append(_f("VFY-SELF-006", "deny", f"Lists Verfy's signing key or device token ({args['pattern']})." + SECRET_MSG))
         touchy = False  # a key file read, or a write outside the project
         if kind == "shell":
-            cmd = next(_command_string(args[k]) for k in args if str(k).lower() in PATTERNS["command_keys"] and _command_string(args[k]) is not None)
+            cmd = _shell_text(args)
             fs, network = check_shell(cmd, ctx)
             out.extend(fs)
             touchy = _pushes(cmd) or any(f["rule"] in ("VFY-SH-007", "VFY-SH-008") for f in fs)

@@ -96,6 +96,17 @@ def main() -> int:
     check("--allow-write opens one folder", r.returncode == 0 and (outside / "file").exists(), r)
     shutil.rmtree(outside, ignore_errors=True)
 
+    # files that decide what runs later, outside the sandbox
+    for name in ("verfy.lock", "verfy.policy.json", ".mcp.json", ".claude/settings.json", ".git/hooks/pre-commit", ".git/config"):
+        path = WORK / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}\n")
+        r = box("/bin/sh", "-c", f"echo {MARK} >> {name}")
+        check(f"{name} cannot be changed from inside", MARK not in path.read_text(), r)
+        path.unlink()
+    shutil.rmtree(WORK / ".git", ignore_errors=True)
+    shutil.rmtree(WORK / ".claude", ignore_errors=True)
+
     # network
     # Python, not curl: Apple's curl cannot finish a TLS handshake inside the sandbox, whatever the settings
     get = "import sys, urllib.request as u; print(u.urlopen(sys.argv[1], timeout=30).read().decode())"

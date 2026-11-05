@@ -15,7 +15,7 @@
     },
     {
      "name": "read_page",
-     "sha256": "sha256:e8cf1a42d78474cd04d35e785a2687faaa912f7b199b9e3564a5f3fb129cb3f3",
+     "sha256": "sha256:01abc557c728823d2ddd7a81daae05bb0f8ec0955ba2d965851d6629c34df41a",
      "score": 100,
      "grade": "A",
      "capabilities": [
@@ -25,7 +25,7 @@
     },
     {
      "name": "get_issue",
-     "sha256": "sha256:4a1b685f96a374f0429c1bde32981fdc0e831e750be82be15bd62cdd5184c783",
+     "sha256": "sha256:b168720a1b145bb71515f4dbee4fb7b927177be449f025db3d900591099d4187",
      "score": 100,
      "grade": "A",
      "capabilities": [],
@@ -41,7 +41,7 @@
     },
     {
      "name": "find_files",
-     "sha256": "sha256:b77ba54d11a9f1eaf6d6110387c2e285e413e5713a179a9596568632e03b9066",
+     "sha256": "sha256:6bdbefe6e13ee48a9cc1e612ec3cc82e8580c304ed0762ca997cdb26fbaf3747",
      "score": 92,
      "grade": "A",
      "capabilities": [
@@ -62,7 +62,7 @@
    "tools": [
     {
      "name": "read_text_file",
-     "sha256": "sha256:d0c6513ce58103542bbf4ed8c907b4eb5648651cb17f0ef1d1a2b3be01f0f722",
+     "sha256": "sha256:d4d32d83d35d9992abfc5a928b25320e3ac1bf10b7206dc2d77ba57b2cb3c309",
      "score": 100,
      "grade": "A",
      "capabilities": [
@@ -92,7 +92,7 @@
     },
     {
      "name": "list_directory",
-     "sha256": "sha256:30b2040e844206f3e4ff83e8d45b2a08884d2d5a342267b312cf8376787458cd",
+     "sha256": "sha256:d209f8f2fe1d25540fad5ae463995bf3ef40bba3e5de0cdfd969e9e1dc1852c3",
      "score": 100,
      "grade": "A",
      "capabilities": [
@@ -112,7 +112,7 @@
     },
     {
      "name": "search_files",
-     "sha256": "sha256:b681504b76ef0f1a7b406fe25cfeb9ec16ff0777ddda3769103f0d352db68d1f",
+     "sha256": "sha256:8e147b10dd3362a13a62b2fab40dd43fdb38afea31cbeb882640234a57d34385",
      "score": 100,
      "grade": "A",
      "capabilities": [
@@ -152,7 +152,7 @@
     },
     {
      "name": "run_sql",
-     "sha256": "sha256:2ebc6f59f6dac7c144024d67ae6973bc3f785a9844acc8e680ff2e20640db4a3",
+     "sha256": "sha256:7f409950370d23b41fa0a44ede9e7bf8cbe2d12bd7623394acf19dc89cc9771b",
      "score": 100,
      "grade": "A",
      "capabilities": [
@@ -162,7 +162,7 @@
     },
     {
      "name": "exec",
-     "sha256": "sha256:d9339e8e5db7db3dc2a524ccbf33e7ed415c8e67e9ff6e3f40ad6c7b47417a13",
+     "sha256": "sha256:0561cc95e46880cb4eb1e67fdf67ea088b478909161e6560ec4c6cdf3fde1a62",
      "score": 89,
      "grade": "B",
      "capabilities": [
@@ -196,7 +196,7 @@
     },
     {
      "name": "multiply",
-     "sha256": "sha256:de445e89e1c33d65013aa589f2717eb21eafc73ddde8ccfcc2a6bc8ff521e728",
+     "sha256": "sha256:6329e1fef502673567d6ed034ffb8d24e3f05f50ea503b981de6883641a8abcd",
      "score": 100,
      "grade": "A",
      "capabilities": [],
@@ -213,7 +213,7 @@
    "tools": [
     {
      "name": "get_weather",
-     "sha256": "sha256:274a80af28cd74cda92ba2895f55a050f5f01d4db7ae792d4a2485ad6a8b113c",
+     "sha256": "sha256:b5bb75eea638ae5141804e13b21b8d71833d47477a20c03ccdb264b49081b501",
      "score": 39,
      "grade": "F",
      "capabilities": [],

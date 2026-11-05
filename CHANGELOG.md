@@ -2,6 +2,18 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.16.0 (2026-11-05)
+
+An internal attack test found these, and the [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) lists them all. It was not an independent test.
+
+- **`$HOME` no longer walks around a path check.** `cat $HOME/.ssh/id_rsa` was allowed while `cat ~/.ssh/id_rsa` was stopped.
+- **The cloud metadata address is caught however it is written:** as a decimal, in hex or octal, or inside IPv6.
+- **`file:` URLs are read as files,** and a tool that runs commands is checked when it takes them as `args`.
+- **More shell tricks are stopped or need a person:** `busybox`, a computed command name, a here-string into a shell, inline code that deletes, fetches or names a key, download then run, `crontab`, `systemctl enable`, git settings that run a command, a new git remote, a container given the host's disk, and `pipx run verfy` or `uvx verfy`.
+- **The gateway forwards only what it could read.** A line that is not strict JSON and a `tools/call` without an id are dropped, and a malformed message no longer stops it.
+- **The lock also covers `title`, `annotations` and `outputSchema`** when a server sends them, because clients act on annotations. **After you upgrade, tools that have these fields show as changed once:** review them with `verfy lock diff` and approve. Verfy Cloud accepts the new fields.
+- **A sandboxed command cannot change `verfy.lock`, the policy, `.mcp.json`, Claude Code's or Cursor's settings, git hooks or `.git/config` in its own folder,** because those decide what runs later, outside the sandbox.
+
 ## 0.15.0 (2026-11-05)
 
 - **API keys in your environment no longer reach a sandboxed command.** `verfy run --sandbox` closed `~/.aws` but still handed over `AWS_SECRET_ACCESS_KEY`. Now only `PATH`, `HOME` and other basics go in, and `--allow-env NAME` adds one. With `--agent`, its own `ANTHROPIC_*` and `CLAUDE_*` variables go in too. If a sandboxed MCP server needs a key, name it with `--allow-env`.

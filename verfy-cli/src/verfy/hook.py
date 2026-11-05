@@ -65,6 +65,8 @@ def action_from_payload(payload: dict[str, Any]) -> dict:
         return {"server": "claude-code", "tool": "read_file", "arguments": {"file_path": str(data.get("file_path") or "")}}
     if tool == "WebFetch":
         return {"server": "claude-code", "tool": "fetch_url", "arguments": {"url": str(data.get("url") or "")}}
+    if tool == "Glob" and not data.get("path"):
+        data = {**data, "path": data.get("pattern")}  # an absolute pattern lists that folder
     return {"server": "claude-code", "tool": tool or "unknown", "arguments": data}
 
 

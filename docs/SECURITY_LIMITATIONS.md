@@ -23,6 +23,7 @@ Verfy reduces risk; it does not remove it. These are the limits we know about. N
 - The first time a server is seen, its tools are locked as they are (trust on first use).
 - A lock proves a definition did not change since it was approved, not that it is safe.
 - The risk Verfy gives a change (low, medium, high) comes from deterministic patterns: new sentences that order the model to move data, new links, hidden-instruction patterns and schema changes. A cleverly worded instruction can still be rated low, so read the diff before you approve.
+- The lock pins a tool's name, description, input schema and, when a server sends them, its title, annotations and output schema. It leaves out `_meta`, which can change on every connection.
 - `verfy lock files` pins the instruction files, skills, commands, hook settings and plugins it knows about (listed in the CLI README). An agent can also read files Verfy does not list; those are not pinned.
 - `verfy import` follows the documented JSON formats of Snyk Agent Scan and Cisco MCP Scanner. Those formats may change between their releases, and the gateway matches imported findings by server and tool name only.
 - The gateway reaches a remote server through `verfy bridge`, which sends only the headers in the config. A server that signs in with OAuth in your MCP client cannot go behind the gateway yet; `verfy lock check` can still read tools from a server that accepts a key in its headers. The bridge does not open the stream for messages a server sends outside an answer to a request.

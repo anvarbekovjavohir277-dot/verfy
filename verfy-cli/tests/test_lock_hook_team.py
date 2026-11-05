@@ -571,7 +571,7 @@ class RunInSandboxTests(unittest.TestCase):
         got = sandbox.runtime_settings(policy, ["registry.npmjs.org", "api.example.com"], ["~/.npm"], Path("/x/home"))
         self.assertEqual(got["network"], {"allowedDomains": ["api.example.com", "registry.npmjs.org"], "deniedDomains": ["*.ngrok.io"]})
         self.assertEqual(got["filesystem"]["allowWrite"], [".", "~/.npm"])
-        self.assertEqual(got["filesystem"]["denyWrite"], ["~/.verfy", str(Path("/x/home"))])
+        self.assertEqual(got["filesystem"]["denyWrite"], [*sandbox.PROJECT_CONTROL, "~/.verfy", str(Path("/x/home"))])
         for path in ("~/.ssh", "~/.verfy", "**/*.pem", str(Path("/x/home"))):
             self.assertIn(path, got["filesystem"]["denyRead"])
 
@@ -1027,7 +1027,7 @@ class LedgerConcurrency(unittest.TestCase):
         self.assertTrue(r["kid"].startswith("atl_"))
 
     def test_tool_pin_is_definition_digest(self):
-        self.assertEqual(tool_pin(TOOL_A), tool_pin(lock.definition(dict(TOOL_A, annotations={"x": 1}))))
+        self.assertEqual(tool_pin(TOOL_A), tool_pin(lock.definition(dict(TOOL_A, _meta={"x": 1}))))
 
 
 if __name__ == "__main__":

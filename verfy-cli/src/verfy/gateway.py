@@ -158,42 +158,56 @@ class Gateway:
                         self.out.flush()
 
     # ------------------------------------------------------------ client side
+    def _refuse(self, msg_id, code: int, message: str) -> None:
+        self.log(message)
+        self.to_client({"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}})
+
     def from_client(self, line: bytes) -> None:
+        """Only what Verfy could read goes on: a server with a laxer parser must not see a call Verfy did not."""
+        if not line.strip():
+            return
         try:
             msg = json.loads(line)
-        except json.JSONDecodeError:
-            self.to_server(line)
+        except ValueError:
+            self._refuse(None, -32700, "Verfy forwards only valid JSON, so this message was dropped.")
             return
-        if isinstance(msg, list):
-            for m in msg:
-                if isinstance(m, dict):
-                    self._client_msg(m)
-            return
-        if isinstance(msg, dict):
-            self._client_msg(msg)
-        else:
-            self.to_server(line)
+        for m in msg if isinstance(msg, list) else [msg]:
+            if not isinstance(m, dict):
+                self._refuse(None, -32600, "Verfy forwards only JSON-RPC objects, so this message was dropped.")
+                continue
+            try:
+                self._client_msg(m)
+            except Exception as e:  # noqa: BLE001 - one bad message must not stop the gateway, and is never forwarded
+                self._refuse(m.get("id"), -32603, f"Verfy could not check this message ({type(e).__name__}), so it was dropped.")
 
     def _client_msg(self, msg: dict) -> None:
         method = msg.get("method")
         if method is None and "id" in msg and self._key(msg["id"]) in self.elicits:
             self._elicit_answer(msg)
             return
+        params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
         if method == "initialize":
-            self.client_caps = (msg.get("params") or {}).get("capabilities") or {}
+            caps = params.get("capabilities")
+            self.client_caps = caps if isinstance(caps, dict) else {}
         if method == "tools/list" and "id" in msg:
             self.pending[self._key(msg["id"])] = ("list",)
         if method == "resources/read" and "id" in msg:
-            self.pending[self._key(msg["id"])] = ("read", str((msg.get("params") or {}).get("uri", "")))
-        if method == "tools/call" and "id" in msg:
-            self._call(msg)
+            self.pending[self._key(msg["id"])] = ("read", str(params.get("uri", "")))
+        if method == "tools/call":
+            if "id" in msg:
+                self._call(msg)
+            else:  # a notification gets no answer, but a server might still run it
+                self.log("dropped a tools/call without an id")
             return
         self.to_server(msg)
 
     def _call(self, msg: dict) -> None:
-        params = msg.get("params") or {}
+        params = msg.get("params") if isinstance(msg.get("params"), dict) else {}
         name = str(params.get("name", ""))
         args = params.get("arguments") or {}
+        if not isinstance(args, dict):
+            self._refuse(msg["id"], -32602, "Tool arguments must be an object, so Verfy did not forward this call.")
+            return
         action = {"server": self.server, "tool": name, "arguments": args}
         meta = self.tool_meta.get(name)
         decision = check(action, self.policy, {"spent_today": self.spent, "tool": meta, "known_tools": list(self.tool_meta), "untrusted": self.outside})
@@ -336,7 +350,7 @@ class Gateway:
         tools = result.get("tools")
         if not isinstance(tools, list):
             return result
-        tools_ok = [t for t in tools if isinstance(t, dict)]
+        tools_ok = [t for t in tools if isinstance(t, dict) and isinstance(t.get("name"), str)]
         try:
             pins = server_pins(load_lock(self.lock_path), self.server)
             lock_ok = True
@@ -370,5 +384,5 @@ class Gateway:
             hidden |= set(self.imported)
         self.log(f"scanned {report['tool_count']} tools from `{self.server}`: grade {report['grade']} ({report['score']}/100)" + (f", hidden: {', '.join(sorted(hidden))}" if hidden else ""))
         out = dict(result)
-        out["tools"] = [t for t in tools if not (isinstance(t, dict) and t.get("name") in hidden)]
+        out["tools"] = [t for t in tools_ok if t["name"] not in hidden]
         return out
