@@ -4,7 +4,7 @@
 
 Please report security issues **privately**:
 
-Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)), or email contact@verfy.dev if you cannot use GitHub. The same is in [security.txt](https://verfy.dev/.well-known/security.txt). Only the maintainers see the report. If you cannot use GitHub, write to security@verfy.dev.
+Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)), or email security@verfy.dev if you cannot use GitHub. The same is in [security.txt](https://verfy.dev/.well-known/security.txt). Only the maintainers see the report. If you cannot use GitHub, write to security@verfy.dev.
 
 A way for an agent to get past Verfy (a command, path or tool call that should be denied or asked about but is allowed) counts as a vulnerability: report it privately the same way.
 
