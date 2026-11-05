@@ -22,6 +22,7 @@ Verfy checks every tool call a coding agent makes against your policy before it 
 | **Verfy Receipts** | `verfy.receipt/1`: signed, chained, hash-only by default; `verfy verify` detects edits, deletions and reordering; `verfy scitt export` writes SCITT signed statements (COSE_Sign1). |
 | **Verfy Guard** | Deterministic `allow` / `ask` / `deny` for shell commands, file paths, URLs, SQL, payments and leaked secrets, through a Claude Code `PreToolUse` hook or an MCP gateway. Errors never become allow. |
 | **Verfy Scan** | Finds MCP servers in Claude Code, Cursor, Claude Desktop, Codex CLI, Gemini CLI, VS Code and Windsurf configs; flags tool poisoning, hidden instructions, shadowing, invisible Unicode, unpinned packages, plain-http servers and secrets in configs. `verfy import` reads Snyk Agent Scan and Cisco MCP Scanner findings so the gateway can enforce them. |
+| **Verfy Sandbox** | `verfy run --sandbox` starts a command, an MCP server or the agent inside Anthropic's open source [sandbox runtime](https://github.com/anthropics/sandbox-runtime), with settings from your policy: no network except the hosts you allow, writes only in this folder, no reading credentials. macOS and Linux. `verfy sandbox status` and `sync` check Claude Code's own sandbox. |
 | **Verfy Cloud** | Hosted by Verfy: one team policy, device enrollment, server-verified receipts, lock and call approvals, Slack and Telegram alerts, audit log, evidence exports. Devices connect with one command, `verfy init --url … --code …`, and then upload receipts on their own. |
 
 ## Verfy and scanners
@@ -97,7 +98,7 @@ node verfy-cli/tests/test_engine.mjs                     # the JavaScript engine
 
 ## Limits
 
-Verfy is not a sandbox: its rules are deterministic pattern matching, and it only sees calls that pass through its hook or gateway. A receipt proves what Verfy decided and that the record was not changed afterwards, not what a tool did internally. No independent penetration test has been done yet. Full list: [`docs/SECURITY_LIMITATIONS.md`](docs/SECURITY_LIMITATIONS.md).
+Verfy's checks are not a sandbox: its rules are deterministic pattern matching, and it only sees calls that pass through its hook or gateway. For untrusted code, use `verfy run --sandbox`, a container or a VM. A receipt proves what Verfy decided and that the record was not changed afterwards, not what a tool did internally. No independent penetration test has been done yet. Full list: [`docs/SECURITY_LIMITATIONS.md`](docs/SECURITY_LIMITATIONS.md).
 
 ## Contributing, security, trademarks
 

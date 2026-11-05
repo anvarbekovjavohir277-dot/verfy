@@ -4,7 +4,7 @@ Verfy reduces risk; it does not remove it. These are the limits we know about. N
 
 ## The guard
 
-- Rules are deterministic pattern matching over commands, paths, URLs and arguments. They are not a sandbox and cannot understand every possible shell construct, interpreter or obfuscation. Run untrusted code in a container or VM as well.
+- Rules are deterministic pattern matching over commands, paths, URLs and arguments. They are not a sandbox and cannot understand every possible shell construct, interpreter or obfuscation. Run untrusted code with `verfy run --sandbox`, or in a container or VM, as well.
 - Verfy only sees calls that go through its Claude Code hook or its MCP gateway. Tools an agent reaches another way are not checked.
 - The hook answers deny or ask, never allow; Claude Code's own permission settings still decide allowed actions.
 - Anyone with write access to the developer's machine can remove the hook or edit the policy. Team policy and receipts make that visible, not impossible.

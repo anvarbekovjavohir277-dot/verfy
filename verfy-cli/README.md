@@ -156,7 +156,7 @@ Devices enrolled with 0.8.0 or later upload on their own: after the hook or the 
 
 ## Use it with a sandbox
 
-Verfy is not a sandbox. Claude Code's own sandbox holds shell commands at the operating system level, including a script the agent wrote, which Verfy cannot follow. It does not cover MCP servers, hooks or the built-in file and web tools, which Verfy watches, so use both.
+Verfy's checks are not a sandbox, so it works with two: Claude Code's own, and `verfy run --sandbox` below. Claude Code's sandbox holds shell commands at the operating system level, including a script the agent wrote, which Verfy cannot follow. It does not cover MCP servers, hooks or the built-in file and web tools, which Verfy watches, so use both.
 
 ```bash
 verfy sandbox status              # what the settings leave open (exit 1 if anything), also shown by `verfy scan --config`
@@ -258,4 +258,4 @@ cd verfy-cli && python -m unittest discover -s tests     # needs Node for the cr
 
 ## Limits
 
-Rules are pattern matching, not a sandbox. Verfy sees only calls that pass through its hook or gateway. A receipt proves what Verfy decided and that the log was not edited, not what a tool did internally. Keep `~/.verfy/key.json` private.
+Rules are pattern matching, not a sandbox; for isolation, use `verfy run --sandbox`. Verfy sees only calls that pass through its hook or gateway. A receipt proves what Verfy decided and that the log was not edited, not what a tool did internally. Keep `~/.verfy/key.json` private.
