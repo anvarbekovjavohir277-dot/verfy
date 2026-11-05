@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -23,6 +24,7 @@ from . import lock as locks
 from . import team as teamlib
 from . import sandbox as sandboxes
 from . import update as updates
+from .fileio import atomic_write
 from .gateway import Gateway, verfy_home
 from .mcp_client import MCPError, expand, list_tools, list_tools_http
 from .policy import DEFAULT_POLICY, TEMPLATES, load_policy, policy_digest
@@ -1141,7 +1143,8 @@ def _hook_record(*, action: dict, decision: dict, session: str, policy: dict, ou
     led = Ledger(home_file("ledger.jsonl"), Key.load(kp))
     receipt = led.append(agent=policy.get("agent", "claude-code"), session=session, action=action, decision=decision,
                          outcome=outcome, policy_sha256=policy_digest(policy),
-                         include_args=bool((policy.get("receipts") or {}).get("include_args", False)))
+                         include_args=bool((policy.get("receipts") or {}).get("include_args", False)),
+                         sandbox=sandboxes.running_in() or ("claude-code" if sandboxes.effective(Path.cwd(), Path.home())["enabled"] is True else None))
     teamlib.sync_soon(verfy_home())
     return receipt
 
@@ -1155,6 +1158,25 @@ def _hook_fail_mode() -> str:
 
 def _policy_hosts(args) -> list[str]:
     return [str(h) for h in (get_policy(args).get("network") or {}).get("allow", [])]
+
+
+def cmd_run(args) -> int:
+    if not args.cmd:
+        raise SystemExit("verfy run: put the command after `--`")
+    settings = sandboxes.runtime_settings(get_policy(args), args.allow_host, args.allow_write, verfy_home(), args.agent)
+    text = json.dumps(settings, indent=2)
+    if args.print:
+        print(text)
+        return 0
+    try:
+        srt = sandboxes.find_runtime(Path.cwd(), settings["filesystem"]["allowWrite"])
+    except ValueError as e:
+        print(f"verfy run: {e}", file=sys.stderr)
+        return 3
+    path = home_file("sandbox") / (hashlib.sha256(text.encode()).hexdigest()[:16] + ".json")
+    atomic_write(path, text)
+    os.environ[sandboxes.MARK_ENV] = "srt"
+    os.execv(srt, [srt, "--settings", str(path), "--", *args.cmd])
 
 
 def cmd_sandbox_status(args) -> int:
@@ -1603,6 +1625,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project", action="store_true", help="install into ./.claude/settings.json instead of ~/.claude/settings.json")
     p.add_argument("--write", action="store_true", help="save the settings change (a backup is kept)")
     p.set_defaults(fn=cmd_hook)
+
+    p = sub.add_parser("run", help="run a command inside the sandbox runtime (`srt`), with settings from your policy (macOS, Linux)")
+    p.add_argument("--sandbox", action="store_true", required=True, help="the only way to run: without it there is nothing to add to the command")
+    p.add_argument("--agent", action="store_true", help="the command is an agent with the Verfy hook: open Verfy's folder and what Claude Code needs")
+    p.add_argument("--allow-host", action="append", default=[], metavar="HOST", help="a host it may reach, on top of network.allow in your policy (repeat for more)")
+    p.add_argument("--allow-write", action="append", default=[], metavar="PATH", help="a path it may write to, on top of this folder (repeat for more)")
+    p.add_argument("--policy")
+    p.add_argument("--print", action="store_true", help="print the sandbox settings and stop")
+    p.set_defaults(fn=cmd_run)
 
     p = sub.add_parser("sandbox", help="check Claude Code's sandbox settings, and add what is missing")
     sb = p.add_subparsers(dest="sandbox_cmd", metavar="action", required=True)

@@ -38,6 +38,7 @@ from .lock import LockError, load_lock, pin, safe_name, save_seen, server_pins, 
 from .policy import policy_digest
 from .precheck import check, payment_amount
 from .receipts import Key, Ledger, read_ledger
+from . import sandbox as sandboxes
 from .scanner import scan, unsafe_tools
 
 
@@ -287,6 +288,7 @@ class Gateway:
                 agent=self.policy.get("agent", "agent"), session=self.session, action=action, decision=decision,
                 outcome=outcome, policy_sha256=self.policy_sha, tool_sha256=meta.get("sha256"),
                 include_args=bool(self.policy.get("receipts", {}).get("include_args", False)),
+                sandbox=sandboxes.running_in(self.command),
             )
         # `verfy sync` uploads the ledger in VERFY_HOME, so only that one is uploaded automatically
         if self.ledger.path == verfy_home() / "ledger.jsonl":

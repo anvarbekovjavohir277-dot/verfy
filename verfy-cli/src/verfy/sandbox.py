@@ -5,16 +5,26 @@ holds a script the agent wrote, which Verfy cannot follow. It does not cover MCP
 Edit and WebFetch tools, and those are what Verfy watches. The sandbox is off by default, and even when on it lets
 commands read most of the machine, credentials included, unless told otherwise. This module reports what is missing
 and writes it. https://code.claude.com/docs/en/sandboxing
+
+`verfy run --sandbox` starts one command inside Anthropic's sandbox runtime (`srt`), which also holds what Claude Code's
+sandbox leaves out, such as an MCP server. Verfy writes the runtime's settings from the policy and hands over to it.
+https://github.com/anthropics/sandbox-runtime
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 # read by default inside the sandbox; a command has no business with these
 CREDENTIALS = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker/config.json", "~/.netrc", "~/.npmrc", "~/.config/gcloud", "~/.verfy"]
+
+RUNTIME_INSTALL = "npm install --global @anthropic-ai/sandbox-runtime"
+MARK_ENV = "VERFY_SANDBOX"  # set by `verfy run --sandbox`, read by the hook and the gateway inside it
+AGENT_HOSTS = ["api.anthropic.com"]
+AGENT_WRITES = ["~/.claude", "~/.claude.json"]
 
 
 def scopes(cwd: Path, home: Path) -> list[Path]:
@@ -104,3 +114,55 @@ def with_sandbox(settings: dict, allowed_hosts: list[str]) -> tuple[dict, bool]:
         net = box.setdefault("network", {})
         net["allowedDomains"] = _lists(net, "allowedDomains") + [h for h in allowed_hosts if h not in _lists(net, "allowedDomains")]
     return out, out != settings
+
+
+def _unique(items) -> list[str]:
+    return list(dict.fromkeys(str(i) for i in items))
+
+
+def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None, agent: bool = False) -> dict:
+    """The runtime's settings. It allows no host and no write that nobody listed, so only reads need naming here.
+
+    With ``agent`` the command is an agent whose Verfy hook runs inside the sandbox too, so Verfy's folder stays open to
+    it: the hook has to sign receipts. What keeps the agent out of the signing key then is the guard, not the sandbox."""
+    network = policy.get("network") or {}
+    guarded = ["~/.verfy", *([str(home)] if home else [])]
+    deny_read = [p for p in [*CREDENTIALS, *guarded] if not (agent and p in guarded)]
+    return {
+        "network": {
+            "allowedDomains": _unique([*network.get("allow", []), *(AGENT_HOSTS if agent else []), *hosts]),
+            "deniedDomains": _unique(network.get("deny", [])),
+        },
+        "filesystem": {
+            "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),
+            "allowRead": [],
+            "allowWrite": _unique([".", *(AGENT_WRITES + guarded if agent else []), *writes]),
+            "denyWrite": [] if agent else _unique(guarded),
+        },
+    }
+
+
+def _within(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def find_runtime(cwd: Path, writable: list[str], windows: bool = os.name == "nt", which=shutil.which) -> str:
+    """The `srt` to start. Raises ValueError rather than let a command run without the sandbox it was asked to run in."""
+    if windows:
+        raise ValueError("this needs macOS or Linux, so the command was not run. On Windows, use WSL2.")
+    found = which("srt")
+    if not found:
+        raise ValueError(f"`srt` is not installed, so the command was not run. Install it: {RUNTIME_INSTALL}")
+    roots = [(cwd / Path(p).expanduser()).resolve() for p in writable]
+    for path in (Path(found).absolute(), Path(found).resolve()):
+        if any(_within(path, root) for root in roots):
+            raise ValueError(f"{path} is in a folder the command may write to, so it could replace the sandbox. Install `srt` somewhere else: {RUNTIME_INSTALL}")
+    return found
+
+
+def running_in(command: list[str] | None = None, env=os.environ) -> str | None:
+    """What the receipt says about the sandbox: this process is inside `srt`, or its server `command` will be."""
+    if env.get(MARK_ENV) == "srt":
+        return "srt"
+    args = [Path(a).name.removesuffix(".exe") if i == 0 else a for i, a in enumerate(command or [])]
+    return "srt" if args[:1] == ["verfy"] and args[1:2] == ["run"] and "--sandbox" in args[:args.index("--") if "--" in args else None] else None

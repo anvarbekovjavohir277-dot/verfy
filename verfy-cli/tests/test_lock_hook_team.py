@@ -557,6 +557,104 @@ class SandboxTests(unittest.TestCase):
             self.assertIs(json.loads((self.home / ".claude" / "settings.json").read_text("utf-8"))["sandbox"]["enabled"], True)
 
 
+class RunInSandboxTests(unittest.TestCase):
+    """What is decided before `srt` starts. scripts/e2e_sandbox.py runs the real thing on Linux and macOS."""
+
+    def setUp(self):
+        self.home = tmpdir(self)
+
+    def test_settings_come_from_the_policy(self):
+        policy = {"network": {"allow": ["api.example.com"], "deny": ["*.ngrok.io"]}, "files": {"sensitive": ["**/*.pem"]}}
+        got = sandbox.runtime_settings(policy, ["registry.npmjs.org", "api.example.com"], ["~/.npm"], Path("/x/home"))
+        self.assertEqual(got["network"], {"allowedDomains": ["api.example.com", "registry.npmjs.org"], "deniedDomains": ["*.ngrok.io"]})
+        self.assertEqual(got["filesystem"]["allowWrite"], [".", "~/.npm"])
+        self.assertEqual(got["filesystem"]["denyWrite"], ["~/.verfy", str(Path("/x/home"))])
+        for path in ("~/.ssh", "~/.verfy", "**/*.pem", str(Path("/x/home"))):
+            self.assertIn(path, got["filesystem"]["denyRead"])
+
+    def test_nothing_is_open_unless_asked(self):
+        got = sandbox.runtime_settings({})
+        self.assertEqual(got["network"]["allowedDomains"], [])
+        self.assertEqual(got["filesystem"]["allowWrite"], ["."])
+
+    def test_an_agent_keeps_verfy_open_for_its_hook_and_nothing_else(self):
+        got = sandbox.runtime_settings({}, home=Path("/x/home"), agent=True)
+        self.assertNotIn("~/.verfy", got["filesystem"]["denyRead"])
+        self.assertIn("~/.ssh", got["filesystem"]["denyRead"])
+        self.assertIn(str(Path("/x/home")), got["filesystem"]["allowWrite"])
+        self.assertEqual(got["network"]["allowedDomains"], ["api.anthropic.com"])
+
+    def find(self, found, writable=(".",), windows=False):
+        return sandbox.find_runtime(self.home, list(writable), windows=windows, which=lambda _: found)
+
+    def test_runtime_is_refused_where_it_cannot_be_trusted(self):
+        outside = str(self.home.parent / "elsewhere" / "srt")
+        self.assertEqual(self.find(outside, ["."]), outside)
+        with self.assertRaisesRegex(ValueError, "WSL2"):
+            self.find(outside, ["."], windows=True)
+        with self.assertRaisesRegex(ValueError, "not installed"):
+            self.find(None, ["."])
+        with self.assertRaisesRegex(ValueError, "may write to"):
+            self.find(str(self.home / "node_modules" / ".bin" / "srt"), ["."])
+        with self.assertRaisesRegex(ValueError, "may write to"):
+            self.find(outside, [".", str(Path(outside).parent)])
+
+    def test_the_command_goes_to_the_runtime_unchanged(self):
+        with mock.patch("verfy.cli.sandboxes.find_runtime", return_value="/opt/bin/srt"), mock.patch("verfy.cli.os.execv") as execv, mock.patch.dict(os.environ):
+            run_cli(self.home, "run", "--sandbox", "--allow-host", "example.com", "--", "sh", "-c", "echo a -- b")
+            self.assertEqual(os.environ[sandbox.MARK_ENV], "srt")
+        exe, argv = execv.call_args[0]
+        self.assertEqual(exe, "/opt/bin/srt")
+        self.assertEqual(argv[:2], ["/opt/bin/srt", "--settings"])
+        self.assertEqual(argv[3:], ["--", "sh", "-c", "echo a -- b"])
+        self.assertIn("example.com", json.loads(Path(argv[2]).read_text("utf-8"))["network"]["allowedDomains"])
+        self.assertTrue(Path(argv[2]).is_relative_to(self.home))
+
+    def test_no_sandbox_means_no_run(self):
+        with mock.patch("verfy.cli.sandboxes.find_runtime", side_effect=ValueError("`srt` is not installed")), mock.patch("verfy.cli.os.execv") as execv:
+            code, _, err = run_cli(self.home, "run", "--sandbox", "--", "echo", "hi")
+        self.assertEqual(code, 3)
+        self.assertIn("not installed", err)
+        execv.assert_not_called()
+        with self.assertRaises(SystemExit):
+            run_cli(self.home, "run", "--", "echo", "hi")
+        with self.assertRaises(SystemExit):
+            run_cli(self.home, "run", "--sandbox")
+
+    def test_print_shows_the_settings_and_stops(self):
+        with mock.patch("verfy.cli.os.execv") as execv:
+            code, out, _ = run_cli(self.home, "run", "--sandbox", "--print", "--", "echo", "hi")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(out)["filesystem"]["allowWrite"], ["."])
+        execv.assert_not_called()
+
+    def test_a_sandboxed_server_is_still_scanned_and_pinned(self):
+        spec = {"command": "verfy", "args": ["proxy", "--name", "fs", "--", "verfy", "run", "--sandbox", "--", "npx", "-y", "pkg"]}
+        self.assertIn("VFY-CFG-001", [f["rule"] for f in discover.check_server("fs", spec)])
+        self.assertEqual(discover.package_in(spec), (10, "npm", "pkg"))
+
+    def test_what_the_receipt_says(self):
+        self.assertEqual(sandbox.running_in(env={sandbox.MARK_ENV: "srt"}), "srt")
+        self.assertIsNone(sandbox.running_in(env={sandbox.MARK_ENV: "something else"}))
+        self.assertIsNone(sandbox.running_in(env={}))
+        self.assertEqual(sandbox.running_in(["/usr/bin/verfy", "run", "--sandbox", "--", "node", "x.js"], {}), "srt")
+        self.assertIsNone(sandbox.running_in(["node", "x.js", "--sandbox"], {}))
+        self.assertIsNone(sandbox.running_in(["verfy", "bridge", "--url", "https://x"], {}))
+        self.assertIsNone(sandbox.running_in(["verfy", "run", "--", "node", "--sandbox"], {}))
+
+    def test_a_receipt_records_the_sandbox_and_stays_valid(self):
+        key = Key.generate()
+        ledger_path = self.home / "ledger.jsonl"
+        ledger = Ledger(ledger_path, key)
+        fields = {"agent": "a", "session": "s", "action": {"tool": "t"}, "decision": {"verdict": "allow"}, "outcome": {"status": "ok", "result_sha256": None}, "policy_sha256": "sha256:" + "0" * 64}
+        ledger.append(**fields)
+        ledger.append(**fields, sandbox="srt")
+        first, second = read_ledger(ledger_path)
+        self.assertNotIn("sandbox", first)
+        self.assertEqual(second["sandbox"], "srt")
+        self.assertTrue(verify_ledger(read_ledger(ledger_path), key.public)["ok"])
+
+
 class SandboxFindingsTests(unittest.TestCase):
     STATE = {"enabled": True, "allowUnsandboxedCommands": False, "denyRead": sandbox.CREDENTIALS, "allowedDomains": [], "excludedCommands": []}
 

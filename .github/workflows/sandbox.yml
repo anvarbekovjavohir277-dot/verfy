@@ -1,0 +1,57 @@
+name: Sandbox
+
+# `verfy run --sandbox` against the real sandbox runtime, on the two systems it runs on. Verfy refuses on native Windows.
+# scripts/e2e_sandbox.py checks what the operating system refuses; the unit tests stop where the runtime starts.
+on:
+  push:
+    branches: [main, run-agent]
+    paths:
+      - verfy-cli/src/verfy/cli.py
+      - verfy-cli/src/verfy/sandbox.py
+      - scripts/e2e_sandbox.py
+      - .github/workflows/sandbox.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sandbox:
+    name: Sandbox (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60 # counts the wait for a runner too, and a macOS runner can take a long time to get
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: What the runtime needs on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bubblewrap socat ripgrep
+          sudo sysctl --write kernel.apparmor_restrict_unprivileged_userns=0
+      - name: What the runtime needs on macOS
+        if: runner.os == 'macOS'
+        run: brew install ripgrep
+      - name: The sandbox runtime
+        run: npm install --global @anthropic-ai/sandbox-runtime@0.0.81 @anthropic-ai/claude-code@2.1.310
+      - name: Build and install Verfy
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/build.txt
+          python -m build --no-isolation --wheel verfy-cli --outdir dist
+          python -m pip install --disable-pip-version-check --no-deps dist/verfy-*.whl
+      - name: End-to-end
+        run: python scripts/e2e_sandbox.py

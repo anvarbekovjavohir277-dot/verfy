@@ -136,7 +136,7 @@ def verify_receipt(receipt: dict, public: bytes) -> bool:
 
 def build_receipt(*, seq: int, prev: str | None, agent: str, session: str, action: dict, decision: dict,
                   outcome: dict, policy_sha256: str, tool_sha256: str | None = None, include_args: bool = False,
-                  issued_at: str | None = None, rid: str | None = None, salt: bytes | None = None) -> dict:
+                  issued_at: str | None = None, rid: str | None = None, salt: bytes | None = None, sandbox: str | None = None) -> dict:
     args = action.get("arguments", {})
     act = {
         "server": action.get("server", ""),
@@ -163,6 +163,7 @@ def build_receipt(*, seq: int, prev: str | None, agent: str, session: str, actio
         },
         "outcome": outcome,
         "tool_sha256": tool_sha256,
+        **({"sandbox": sandbox} if sandbox else {}),
     }
 
 

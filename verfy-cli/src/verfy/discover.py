@@ -156,8 +156,8 @@ def package_in(spec: dict) -> tuple[int, str, str] | None:
     args = [str(a) for a in spec.get("args") or []]
     base = Path(str(spec.get("command") or "")).name.lower().removesuffix(".exe").removesuffix(".cmd")
     start = 0
-    if base == "verfy" and "--" in args:
-        start = args.index("--") + 1
+    while base == "verfy" and "--" in args[start:]:
+        start = args.index("--", start) + 1
         if start >= len(args):
             return None
         base = Path(args[start]).name.lower().removesuffix(".exe").removesuffix(".cmd")
@@ -236,8 +236,8 @@ def check_server(name: str, spec: dict, local: set[str] | None = None) -> list[d
     launch_command, launch_args = command, args
     command, args = _unwrap_shell(command, args)
     base = Path(command).name.lower().removesuffix(".exe").removesuffix(".cmd")
-    gated = base == "verfy" or (len(args) > 1 and args[0] == "-m" and args[1] == "verfy")
-    if gated and "--" in args:
+    gated = base == "verfy" or args[:2] == ["-m", "verfy"]
+    while (base == "verfy" or args[:2] == ["-m", "verfy"]) and "--" in args:  # a gateway, a sandbox, or both
         inner = args[args.index("--") + 1:]
         command, args = (inner[0], inner[1:]) if inner else ("", [])
         base = Path(command).name.lower().removesuffix(".exe").removesuffix(".cmd")
