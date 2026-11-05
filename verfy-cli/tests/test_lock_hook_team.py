@@ -605,8 +605,8 @@ class RunInSandboxTests(unittest.TestCase):
     def test_the_command_goes_to_the_runtime_unchanged(self):
         with mock.patch("verfy.cli.sandboxes.find_runtime", return_value="/opt/bin/srt"), mock.patch("verfy.cli.os.execve") as execv, mock.patch.dict(os.environ):
             run_cli(self.home, "run", "--sandbox", "--allow-host", "example.com", "--", "sh", "-c", "echo a -- b")
-            self.assertEqual(env[sandbox.MARK_ENV], "srt")
         exe, argv, env = execv.call_args[0]
+        self.assertEqual(env[sandbox.MARK_ENV], "srt")
         self.assertEqual(exe, "/opt/bin/srt")
         self.assertEqual(argv[:2], ["/opt/bin/srt", "--settings"])
         self.assertEqual(argv[3:], ["--", "sh", "-c", "echo a -- b"])
