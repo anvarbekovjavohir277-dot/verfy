@@ -8,6 +8,7 @@ and writes it. https://code.claude.com/docs/en/sandboxing
 
 `verfy run --sandbox` starts one command inside Anthropic's sandbox runtime (`srt`), which also holds what Claude Code's
 sandbox leaves out, such as an MCP server. Verfy writes the runtime's settings from the policy and hands over to it.
+The runtime has no native Windows version, so on Windows the command goes to `verfy run` inside WSL2.
 https://github.com/anthropics/sandbox-runtime
 """
 
@@ -16,11 +17,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 # read by default inside the sandbox; a command has no business with these
 CREDENTIALS = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker/config.json", "~/.netrc", "~/.npmrc", "~/.config/gcloud", "~/.verfy"]
 
+WINDOWS = os.name == "nt"
 RUNTIME_INSTALL = "npm install --global @anthropic-ai/sandbox-runtime"
 MARK_ENV = "VERFY_SANDBOX"  # set by `verfy run --sandbox`, read by the hook and the gateway inside it
 AGENT_HOSTS = ["api.anthropic.com"]
@@ -128,6 +131,7 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
     network = policy.get("network") or {}
     guarded = ["~/.verfy", *([str(home)] if home else [])]
     deny_read = [p for p in [*CREDENTIALS, *guarded] if not (agent and p in guarded)]
+    deny_read += [f"{h.as_posix()}/{p[2:]}" for h in windows_homes() for p in CREDENTIALS]
     return {
         "network": {
             "allowedDomains": _unique([*network.get("allow", []), *(AGENT_HOSTS if agent else []), *hosts]),
@@ -140,6 +144,20 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
             "denyWrite": [] if agent else _unique(guarded),
         },
     }
+
+
+def windows_homes(mnt: Path = Path("/mnt")) -> list[Path]:
+    """Inside WSL the Windows drives are open to Linux, and the Windows user's keys are on them."""
+    return sorted(p for p in mnt.glob("*/Users/*") if p.name not in ("All Users", "Default", "Default User", "Public") and p.is_dir())
+
+
+def wsl_command(args: list[str], cwd: Path, which=shutil.which, run=subprocess.run) -> list[str]:
+    """The same `verfy run` inside WSL2. Raises ValueError rather than run a command without the sandbox it was asked for."""
+    wsl = which("wsl.exe")
+    start = [wsl, "--cd", str(cwd), "--exec", "bash", "-lc"]
+    if not wsl or run([*start, "command -v verfy && command -v srt"], capture_output=True).returncode != 0:
+        raise ValueError(f"native Windows has no sandbox runtime, so the command was not run. Install WSL2, then verfy and srt inside it: {RUNTIME_INSTALL}")
+    return [*start, 'exec verfy "$@"', "verfy", *args]
 
 
 def _within(path: Path, root: Path) -> bool:

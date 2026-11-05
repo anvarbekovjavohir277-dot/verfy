@@ -43,6 +43,8 @@ These are fixed in verfy 0.5.2:
 - "silently" was dropped;
 - merely mentioning a file such as `.env` is now medium, not high.
 
+**Rescanned on 5 November 2026** with the scanner of verfy 0.13.0, on the same definitions: the newest release of the 34 servers that started, 532 tools. It reported **no high or critical findings** and one medium, a description that mentions a sensitive file. Two more words were dropped on the way, because `summary` and `metadata` are ordinary required fields in Jira and HubSpot tools. No server in this run was known to be malicious, so this measures false alarms, not how much the scanner catches.
+
 On the same 34 servers the scanner now reports **0** high or critical findings. The real poisoning examples in `verfy-cli/examples/tools/` still get grade F. A new example file, `benign-real-world.json`, keeps these false alarms from coming back.
 
 ## Limits

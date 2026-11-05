@@ -26,6 +26,15 @@ claude plugin install verfy@verfy
 
 Claude Code then runs `verfy hook pre-tool-use` before every tool call. The agent cannot switch Verfy off through what Verfy sees: changes to the hook settings, `verfy.lock`, the policy, `~/.verfy` or the Verfy install are denied, changes to MCP configs need approval, and so do `verfy lock approve`, `verfy lock check --update`, `verfy lock files --update`, `verfy import --save`, `verfy init --force`, `verfy team enroll` (or `verfy init --url/--code`), `verfy team auto-sync off` and `pip uninstall verfy` when the agent runs them (denied). Verfy answers **deny** or **ask** with the rule and reason, or stays silent so Claude Code's own permissions decide; it never answers allow itself. Any error becomes `ask` (or `deny` with `"fail_mode": "deny"`). The hook never touches the network itself; on a device enrolled in Verfy Cloud with automatic upload it starts `verfy sync` as a separate background process, at most every five minutes.
 
+## Guard Cursor (beta)
+
+```bash
+verfy hook install --cursor              # shows the change to ~/.cursor/hooks.json
+verfy hook install --cursor --write      # saves it (a backup is kept); --project for ./.cursor/hooks.json
+```
+
+Cursor then asks `verfy hook cursor` before terminal commands, file reads and MCP calls, each with a signed receipt, and an action that is not allowed stops there. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered, so keep `verfy wrap` for scan and lock on its MCP servers. This follows [Cursor's hook documentation](https://cursor.com/docs/agent/hooks) and has not yet been run inside Cursor itself.
+
 ## Go back to a release that matches the lock
 
 ```bash
@@ -117,7 +126,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.12.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.13.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -190,7 +199,7 @@ verfy proxy --name memory -- verfy run --sandbox --allow-write ~/.npm --allow-ho
 | Paths it can write | this folder and `--allow-write`; never Verfy's own folder, unless `--agent` |
 | Paths it cannot read | credential paths, `~/.verfy` (unless `--agent`) and `files.sensitive` |
 
-If `srt` is missing, or sits in a folder the command could write to, the command does not run (exit 3). It works on macOS and Linux and refuses on native Windows. Otherwise the exit code is the command's own. With `--agent` the hook needs Verfy's folder, so the guard, not the sandbox, keeps the agent out of the signing key.
+If `srt` is missing, or sits in a folder the command could write to, the command does not run (exit 3). It works on macOS and Linux. Native Windows has no sandbox runtime, so there `verfy run --sandbox` goes to `verfy run` inside WSL2, which needs verfy and `srt` installed inside it; without them the command does not run. The policy and the environment are then the ones inside WSL2, and the Windows user's credential folders under `/mnt` are closed too. Otherwise the exit code is the command's own. With `--agent` the hook needs Verfy's folder, so the guard, not the sandbox, keeps the agent out of the signing key.
 
 Receipts then carry `"sandbox": "srt"` (or `"claude-code"` when Claude Code's sandbox is on). That is what this machine states, not a proof. `srt` is a research preview. Environment variables reach the command, so keep secrets out of what you allow to leave.
 

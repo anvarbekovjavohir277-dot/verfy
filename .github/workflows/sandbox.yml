@@ -9,7 +9,9 @@ on:
       - verfy-cli/src/verfy/cli.py
       - verfy-cli/src/verfy/sandbox.py
       - scripts/e2e_sandbox.py
+      - scripts/e2e_wsl.py
       - .github/workflows/sandbox.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -55,3 +57,48 @@ jobs:
           python -m pip install --disable-pip-version-check --no-deps dist/verfy-*.whl
       - name: End-to-end
         run: python scripts/e2e_sandbox.py
+
+  wsl:
+    name: Sandbox (Windows, WSL2)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: wsl-bash {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Vampire/setup-wsl@4c48163d9f981914dd8caa0fc335fe19cca5bff4 # v7.2.0
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: bubblewrap socat ripgrep python3-pip python3-venv curl ca-certificates xz-utils
+      - name: Node and the sandbox runtime inside WSL2
+        run: |
+          curl -fsSL https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz | tar -xJ -C /opt
+          ln -sf /opt/node-v24.11.0-linux-x64/bin/* /usr/local/bin/
+          npm install --global @anthropic-ai/sandbox-runtime@0.0.81 @anthropic-ai/claude-code@2.1.310
+          ln -sf /opt/node-v24.11.0-linux-x64/bin/* /usr/local/bin/
+      - name: Verfy inside WSL2
+        run: |
+          rm -rf /tmp/src && cp -r . /tmp/src && cd /tmp/src
+          python3 -m venv /opt/v
+          /opt/v/bin/pip install --disable-pip-version-check --require-hashes -r .github/requirements/build.txt
+          /opt/v/bin/python -m build --no-isolation --wheel verfy-cli --outdir dist
+          /opt/v/bin/pip install --disable-pip-version-check --no-deps dist/verfy-*.whl
+          ln -sf /opt/v/bin/verfy /usr/local/bin/verfy
+      - name: End-to-end inside WSL2
+        run: cd /tmp/src && /opt/v/bin/python scripts/e2e_sandbox.py
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Verfy on Windows
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/build.txt
+          python -m build --no-isolation --wheel verfy-cli --outdir dist-windows
+          python -m pip install --disable-pip-version-check --no-deps (Get-Item dist-windows/verfy-*.whl).FullName
+      - name: End-to-end from Windows
+        shell: pwsh
+        run: python scripts/e2e_wsl.py

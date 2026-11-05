@@ -2,6 +2,14 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.13.0 (2026-11-05)
+
+- **Cursor hook (beta).** `verfy hook install --cursor --write` adds `verfy hook cursor` to `~/.cursor/hooks.json`, so Cursor's terminal commands, file reads and MCP calls are checked before they run and each gets a signed receipt. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes, and `.cursor/hooks.json` is now protected from the agent. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered. This follows Cursor's documentation and has not yet been run inside Cursor itself.
+- **The sandbox from Windows.** On native Windows, `verfy run --sandbox` now hands over to `verfy run` inside WSL2. It needs verfy and `srt` installed there; without them the command does not run (exit 3). Native Windows itself still has no sandbox runtime.
+- **Inside WSL, the Windows user's keys are closed too.** The sandbox denied `~/.ssh` but not `/mnt/c/Users/you/.ssh`, which Linux can read. Every credential folder is now closed for each Windows user it finds.
+- **Fewer false alarms in the scanner.** `summary` and `metadata` no longer count as side channels: they are ordinary required fields in Jira and HubSpot tools. On the newest release of the 34 servers from the October research (532 tools), the scanner now reports no high or critical findings and one medium; version 0.5.1 reported 163 high or critical.
+- The sandbox workflow now also runs on Windows: the full end-to-end test inside real WSL2, and a new one from native Windows, with a control next to every refusal.
+
 ## 0.12.0 (2026-11-05)
 
 - **`verfy run --sandbox -- COMMAND`.** Starts one command inside Anthropic's sandbox runtime (`srt`), a separate open source tool, with settings written from your Verfy policy: no network except `network.allow` and `--allow-host`, writes only in this folder and `--allow-write` paths, and no reading credential paths, `~/.verfy` or what `files.sensitive` lists. This covers what Claude Code's sandbox leaves out, because it can hold an MCP server: `verfy proxy --name fs -- verfy run --sandbox -- npx ...`. The command does not run if `srt` is missing or sits in a folder the command could write to. It works on macOS and Linux and refuses on native Windows. `srt` is a research preview and you install it yourself.

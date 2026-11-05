@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import os
@@ -148,6 +149,7 @@ def cmd_init(args) -> int:
     print("  verfy scan --discover           the findings for each MCP server in your Claude Code / Cursor configs")
     if not hook:
         print("  verfy hook install --write      guard every Claude Code tool call (PreToolUse hook)")
+        print("  verfy hook install --cursor --write   guard Cursor's terminal, file reads and MCP calls (beta)")
     print("  verfy wrap <config.json>        put MCP servers behind the gateway (scan, lock, pre-check, receipts)")
     if not code:
         print("  verfy team enroll --url URL --code CODE   connect this machine to Verfy Cloud (code from Dashboard > Devices)")
@@ -1136,15 +1138,15 @@ def _hook_policy(cwd: str | None) -> dict:
     return load_policy(default_policy_path(Path(cwd) if cwd else None), workspace=cwd)
 
 
-def _hook_record(*, action: dict, decision: dict, session: str, policy: dict, outcome: dict) -> dict | None:
+def _hook_record(*, action: dict, decision: dict, session: str, policy: dict, outcome: dict, agent: str | None = None) -> dict | None:
     kp = home_file("key.json")
     if not kp.exists():
         return None  # `verfy init` not run yet: still guard, just no receipt
     led = Ledger(home_file("ledger.jsonl"), Key.load(kp))
-    receipt = led.append(agent=policy.get("agent", "claude-code"), session=session, action=action, decision=decision,
+    receipt = led.append(agent=agent or policy.get("agent", "claude-code"), session=session, action=action, decision=decision,
                          outcome=outcome, policy_sha256=policy_digest(policy),
                          include_args=bool((policy.get("receipts") or {}).get("include_args", False)),
-                         sandbox=sandboxes.running_in() or ("claude-code" if sandboxes.effective(Path.cwd(), Path.home())["enabled"] is True else None))
+                         sandbox=sandboxes.running_in() or ("claude-code" if not agent and sandboxes.effective(Path.cwd(), Path.home())["enabled"] is True else None))
     teamlib.sync_soon(verfy_home())
     return receipt
 
@@ -1160,6 +1162,18 @@ def _policy_hosts(args) -> list[str]:
     return [str(h) for h in (get_policy(args).get("network") or {}).get("allow", [])]
 
 
+def _run_in_wsl(args) -> int:
+    flags = ["--agent"] if args.agent else []
+    flags += [x for h in args.allow_host for x in ("--allow-host", h)] + [x for p in args.allow_write for x in ("--allow-write", p)]
+    flags += ["--policy", str(args.policy)] if args.policy else []
+    try:
+        command = sandboxes.wsl_command(["run", "--sandbox", *flags, "--", *args.cmd], Path.cwd())
+    except ValueError as e:
+        print(f"verfy run: {e}", file=sys.stderr)
+        return 3
+    return subprocess.run(command).returncode
+
+
 def cmd_run(args) -> int:
     if not args.cmd:
         raise SystemExit("verfy run: put the command after `--`")
@@ -1168,6 +1182,8 @@ def cmd_run(args) -> int:
     if args.print:
         print(text)
         return 0
+    if sandboxes.WINDOWS:
+        return _run_in_wsl(args)
     try:
         srt = sandboxes.find_runtime(Path.cwd(), settings["filesystem"]["allowWrite"])
     except ValueError as e:
@@ -1215,12 +1231,12 @@ def cmd_sandbox_sync(args) -> int:
     return 0
 
 
-def _install_hook(project: bool, write: bool) -> tuple[Path, bool, str]:
-    """Add the PreToolUse hook to Claude Code's settings. Returns (path, changed, new text); writes only with write=True,
-    keeping a backup of the old file."""
-    path = hooks.settings_path(project)
+def _install_hook(project: bool, write: bool, cursor: bool = False) -> tuple[Path, bool, str]:
+    """Add the hook to Claude Code's settings or Cursor's hooks.json. Returns (path, changed, new text); writes only with
+    write=True, keeping a backup of the old file."""
+    path = hooks.cursor_hooks_path(project) if cursor else hooks.settings_path(project)
     current = json.loads(path.read_text("utf-8")) if path.exists() else {}
-    updated, changed = hooks.with_hook(current)
+    updated, changed = hooks.with_cursor_hook(current) if cursor else hooks.with_hook(current)
     text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
     if changed and write:
         if path.exists():
@@ -1232,16 +1248,17 @@ def _install_hook(project: bool, write: bool) -> tuple[Path, bool, str]:
 
 def cmd_hook(args) -> int:
     if args.event == "install":
-        path, changed, text = _install_hook(args.project, args.write)
+        path, changed, text = _install_hook(args.project, args.write, args.cursor)
         if not changed:
             print(f"Verfy hook is already in {path}.")
         elif not args.write:
             sys.stdout.write(text)
             print(f"[verfy] would update {path} (add --write to save; a backup is kept)", file=sys.stderr)
         else:
-            print(f"Added `{hooks.PRE_TOOL_COMMAND}` to {path}.")
+            print(f"Added `{hooks.CURSOR_COMMAND if args.cursor else hooks.PRE_TOOL_COMMAND}` to {path}.")
         return 0
-    return hooks.run_hook(args.event, record=_hook_record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
+    record = functools.partial(_hook_record, agent="cursor") if args.event == "cursor" else _hook_record
+    return hooks.run_hook(args.event, record=record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
 
 
 # ---------------------------------------------------------------- team
@@ -1620,13 +1637,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_import)
 
-    p = sub.add_parser("hook", help="Claude Code hook (pre-tool-use) or `hook install`")
-    p.add_argument("event", choices=["pre-tool-use", "install"])
-    p.add_argument("--project", action="store_true", help="install into ./.claude/settings.json instead of ~/.claude/settings.json")
+    p = sub.add_parser("hook", help="Claude Code (pre-tool-use) or Cursor (cursor) hook, or `hook install`")
+    p.add_argument("event", choices=["pre-tool-use", "cursor", "install"])
+    p.add_argument("--cursor", action="store_true", help="install Cursor's hook into ~/.cursor/hooks.json (beta)")
+    p.add_argument("--project", action="store_true", help="install into this project (./.claude/settings.json or ./.cursor/hooks.json) instead of your home folder")
     p.add_argument("--write", action="store_true", help="save the settings change (a backup is kept)")
     p.set_defaults(fn=cmd_hook)
 
-    p = sub.add_parser("run", help="run a command inside the sandbox runtime (`srt`), with settings from your policy (macOS, Linux)")
+    p = sub.add_parser("run", help="run a command inside the sandbox runtime (`srt`), with settings from your policy (macOS, Linux, Windows through WSL2)")
     p.add_argument("--sandbox", action="store_true", required=True, help="the only way to run: without it there is nothing to add to the command")
     p.add_argument("--agent", action="store_true", help="the command is an agent with the Verfy hook: open Verfy's folder and what Claude Code needs")
     p.add_argument("--allow-host", action="append", default=[], metavar="HOST", help="a host it may reach, on top of network.allow in your policy (repeat for more)")

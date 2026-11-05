@@ -558,10 +558,13 @@ class SandboxTests(unittest.TestCase):
 
 
 class RunInSandboxTests(unittest.TestCase):
-    """What is decided before `srt` starts. scripts/e2e_sandbox.py runs the real thing on Linux and macOS."""
+    """What is decided before `srt` starts. scripts/e2e_sandbox.py runs the real thing on Linux, macOS and WSL2."""
 
     def setUp(self):
         self.home = tmpdir(self)
+        posix = mock.patch.object(sandbox, "WINDOWS", False)
+        posix.start()
+        self.addCleanup(posix.stop)
 
     def test_settings_come_from_the_policy(self):
         policy = {"network": {"allow": ["api.example.com"], "deny": ["*.ngrok.io"]}, "files": {"sensitive": ["**/*.pem"]}}

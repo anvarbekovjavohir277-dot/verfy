@@ -15,6 +15,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from verfy.sandbox import windows_homes
+
 HOME = Path.home()
 WORK = Path(tempfile.mkdtemp(prefix="verfy-sandbox-")).resolve()
 MARK = "verfy-e2e-marker-5f1c"
@@ -60,7 +62,7 @@ def main() -> int:
     check("its exit code comes back", r.returncode == 7, r)
 
     # reads
-    secrets = [HOME / ".ssh" / "verfy-e2e", HOME / ".verfy" / "verfy-e2e"]
+    secrets = [HOME / ".ssh" / "verfy-e2e", HOME / ".verfy" / "verfy-e2e", *[h / ".ssh" / "verfy-e2e" for h in windows_homes()]]
     for path in secrets:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(MARK)
