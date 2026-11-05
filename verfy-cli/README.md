@@ -126,7 +126,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.14.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.15.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -198,10 +198,11 @@ verfy proxy --name memory -- verfy run --sandbox --allow-write ~/.npm --allow-ho
 | Hosts it can reach | `network.allow` and `--allow-host`; `network.deny` wins |
 | Paths it can write | this folder and `--allow-write`; never Verfy's own folder, unless `--agent` |
 | Paths it cannot read | credential paths, `~/.verfy` (unless `--agent`) and `files.sensitive` |
+| Environment it gets | `PATH`, `HOME` and other basics, and what you name with `--allow-env NAME`; with `--agent` also `ANTHROPIC_*` and `CLAUDE_*` |
 
 If `srt` is missing, or sits in a folder the command could write to, the command does not run (exit 3). It works on macOS and Linux. Native Windows has no sandbox runtime, so there `verfy run --sandbox` goes to `verfy run` inside WSL2, which needs verfy and `srt` installed inside it; without them the command does not run. The policy and the environment are then the ones inside WSL2, and the Windows user's credential folders under `/mnt` are closed too. Otherwise the exit code is the command's own. With `--agent` the hook needs Verfy's folder, so the guard, not the sandbox, keeps the agent out of the signing key.
 
-Receipts then carry `"sandbox": "srt"` (or `"claude-code"` when Claude Code's sandbox is on). That is what this machine states, not a proof. `srt` is a research preview. Environment variables reach the command, so keep secrets out of what you allow to leave.
+Receipts then carry `"sandbox": "srt"` (or `"claude-code"` when Claude Code's sandbox is on). That is what this machine states, not a proof. `srt` is a research preview. API keys in your environment stay outside the sandbox unless you pass them, and a key you do pass can leave through any host you allow.
 
 ## After the agent reads outside text
 

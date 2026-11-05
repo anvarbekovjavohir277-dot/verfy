@@ -61,6 +61,15 @@ def main() -> int:
     r = box("sh", "-c", "exit 7")
     check("its exit code comes back", r.returncode == 7, r)
 
+    # the environment
+    secret = {**os.environ, "VERFY_E2E_KEY": MARK}
+    show = ("/bin/sh", "-c", "echo key=$VERFY_E2E_KEY path=$PATH")
+    check("control: the variable is set outside the sandbox", MARK in run(*show, env=secret).stdout)
+    r = run("verfy", "run", "--sandbox", "--", *show, env=secret)
+    check("an API key in the environment does not reach the command", r.returncode == 0 and MARK not in r.stdout and "path=/" in r.stdout, r)
+    r = run("verfy", "run", "--sandbox", "--allow-env", "VERFY_E2E_KEY", "--", *show, env=secret)
+    check("--allow-env passes one variable", r.returncode == 0 and MARK in r.stdout, r)
+
     # reads
     secrets = [HOME / ".ssh" / "verfy-e2e", HOME / ".verfy" / "verfy-e2e", *[h / ".ssh" / "verfy-e2e" for h in windows_homes()]]
     for path in secrets:

@@ -1159,6 +1159,7 @@ def _policy_hosts(args) -> list[str]:
 def _run_in_wsl(args) -> int:
     flags = ["--agent"] if args.agent else []
     flags += [x for h in args.allow_host for x in ("--allow-host", h)] + [x for p in args.allow_write for x in ("--allow-write", p)]
+    flags += [x for n in args.allow_env for x in ("--allow-env", n)]
     flags += ["--policy", str(args.policy)] if args.policy else []
     try:
         command = sandboxes.wsl_command(["run", "--sandbox", *flags, "--", *args.cmd], Path.cwd())
@@ -1185,8 +1186,11 @@ def cmd_run(args) -> int:
         return 3
     path = home_file("sandbox") / (hashlib.sha256(text.encode()).hexdigest()[:16] + ".json")
     atomic_write(path, text)
-    os.environ[sandboxes.MARK_ENV] = "srt"
-    os.execv(srt, [srt, "--settings", str(path), "--", *args.cmd])
+    env = sandboxes.runtime_env(os.environ, args.allow_env, args.agent)
+    left_out = len(os.environ) - len(env) + 1
+    if left_out > 0:
+        print(f"verfy run: {left_out} environment variables stay outside the sandbox; pass one with --allow-env NAME", file=sys.stderr)
+    os.execve(srt, [srt, "--settings", str(path), "--", *args.cmd], env)
 
 
 def cmd_sandbox_status(args) -> int:
@@ -1642,6 +1646,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sandbox", action="store_true", required=True, help="the only way to run: without it there is nothing to add to the command")
     p.add_argument("--agent", action="store_true", help="the command is an agent with the Verfy hook: open Verfy's folder and what Claude Code needs")
     p.add_argument("--allow-host", action="append", default=[], metavar="HOST", help="a host it may reach, on top of network.allow in your policy (repeat for more)")
+    p.add_argument("--allow-env", action="append", default=[], metavar="NAME", help="an environment variable it may read, on top of PATH, HOME and the other basics (repeat for more)")
     p.add_argument("--allow-write", action="append", default=[], metavar="PATH", help="a path it may write to, on top of this folder (repeat for more)")
     p.add_argument("--policy")
     p.add_argument("--print", action="store_true", help="print the sandbox settings and stop")

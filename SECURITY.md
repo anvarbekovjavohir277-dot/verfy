@@ -10,7 +10,7 @@ A way for an agent to get past Verfy (a command, path or tool call that should b
 
 Include the affected component (CLI, web app, database migration), the version or commit, steps to reproduce, and the impact you observed. Please do not open public issues for vulnerabilities.
 
-We aim to acknowledge reports within 2 business days and to keep you informed until a fix is released. We will credit you in the release notes unless you prefer otherwise.
+We aim to acknowledge reports within 2 business days, to keep you informed until a fix is released, and to fix a confirmed issue within 90 days. We publish an advisory when the fix is out, or after 90 days at the latest. We will credit you in the release notes unless you prefer otherwise.
 
 ## Find a bypass
 

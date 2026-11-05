@@ -2,6 +2,11 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.15.0 (2026-11-05)
+
+- **API keys in your environment no longer reach a sandboxed command.** `verfy run --sandbox` closed `~/.aws` but still handed over `AWS_SECRET_ACCESS_KEY`. Now only `PATH`, `HOME` and other basics go in, and `--allow-env NAME` adds one. With `--agent`, its own `ANTHROPIC_*` and `CLAUDE_*` variables go in too. If a sandboxed MCP server needs a key, name it with `--allow-env`.
+- `SECURITY.md` now says how long a fix may take: 90 days, then an advisory either way.
+
 ## 0.14.0 (2026-11-05)
 
 - **Remote servers on the older SSE transport.** `verfy proxy --url`, `verfy wrap`, `verfy lock check` and `verfy scan --live` now fall back to HTTP+SSE when a server refuses the first POST the way the MCP specification describes. The address the server names for its messages must be on the same server, so a key does not go anywhere else. OAuth sign-in is still not supported.

@@ -26,6 +26,11 @@ CREDENTIALS = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker/config.json
 WINDOWS = os.name == "nt"
 RUNTIME_INSTALL = "npm install --global @anthropic-ai/sandbox-runtime"
 MARK_ENV = "VERFY_SANDBOX"  # set by `verfy run --sandbox`, read by the hook and the gateway inside it
+# what a command needs to find its way around; the rest, API keys included, stays outside unless --allow-env names it
+BASE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LANG", "TZ", "TMPDIR", "TEMP", "TMP", "PWD",
+            "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "VERFY_HOME"}
+BASE_ENV_PREFIXES = ("LC_", "XDG_")
+AGENT_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")  # an agent cannot start without its own key
 AGENT_HOSTS = ["api.anthropic.com"]
 AGENT_WRITES = ["~/.claude", "~/.claude.json"]
 
@@ -144,6 +149,13 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
             "denyWrite": [] if agent else _unique(guarded),
         },
     }
+
+
+def runtime_env(env, allow=(), agent: bool = False) -> dict[str, str]:
+    """The environment a sandboxed command gets. A sandbox that cannot read ~/.aws must not hand over AWS_SECRET_ACCESS_KEY."""
+    prefixes = BASE_ENV_PREFIXES + (AGENT_ENV_PREFIXES if agent else ())
+    keep = {k: v for k, v in env.items() if k in BASE_ENV or k in allow or k.startswith(prefixes)}
+    return {**keep, MARK_ENV: "srt"}
 
 
 def windows_homes(mnt: Path = Path("/mnt")) -> list[Path]:

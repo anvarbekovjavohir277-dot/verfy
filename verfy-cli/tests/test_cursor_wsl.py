@@ -134,6 +134,27 @@ class CursorInstallTests(unittest.TestCase):
         self.assertEqual(path.with_suffix(".json.verfy-backup").read_text("utf-8"), '{"version": 1, "hooks": {}}')
 
 
+class EnvironmentTests(unittest.TestCase):
+    OUTSIDE = {"PATH": "/bin", "HOME": "/home/you", "LC_ALL": "C", "XDG_CACHE_HOME": "/c", "VERFY_HOME": "/v", "AWS_SECRET_ACCESS_KEY": "k1",
+               "GITHUB_TOKEN": "k2", "ANTHROPIC_API_KEY": "k3", "VERFY_BRIDGE_HEADERS": "k4", "API_KEY": "k5"}
+
+    def test_keys_stay_outside(self):
+        got = sandbox.runtime_env(self.OUTSIDE)
+        self.assertEqual(set(got), {"PATH", "HOME", "LC_ALL", "XDG_CACHE_HOME", "VERFY_HOME", sandbox.MARK_ENV})
+        self.assertEqual(got[sandbox.MARK_ENV], "srt")
+
+    def test_a_named_variable_goes_in_and_nothing_else(self):
+        got = sandbox.runtime_env(self.OUTSIDE, ["API_KEY", "NOT_SET"])
+        self.assertEqual(got["API_KEY"], "k5")
+        self.assertNotIn("NOT_SET", got)
+        self.assertNotIn("GITHUB_TOKEN", got)
+
+    def test_an_agent_keeps_its_own_key_only(self):
+        got = sandbox.runtime_env(self.OUTSIDE, agent=True)
+        self.assertEqual(got["ANTHROPIC_API_KEY"], "k3")
+        self.assertNotIn("AWS_SECRET_ACCESS_KEY", got)
+
+
 class WindowsTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -179,13 +200,13 @@ class WindowsTests(unittest.TestCase):
         self.assertEqual(seen["stdin"], sandbox.subprocess.DEVNULL)
 
     def test_every_flag_reaches_verfy_inside_wsl(self):
-        args = types.SimpleNamespace(agent=True, allow_host=["a.dev"], allow_write=["out"], policy="p.json", cmd=["node", "x.js"])
+        args = types.SimpleNamespace(agent=True, allow_host=["a.dev"], allow_write=["out"], allow_env=["KEY"], policy="p.json", cmd=["node", "x.js"])
         with mock.patch.object(sandbox, "wsl_command", return_value=["wsl"]) as built, mock.patch.object(cli.subprocess, "run", return_value=types.SimpleNamespace(returncode=7)):
             self.assertEqual(cli._run_in_wsl(args), 7)
-        self.assertEqual(built.call_args[0][0], ["run", "--sandbox", "--agent", "--allow-host", "a.dev", "--allow-write", "out", "--policy", "p.json", "--", "node", "x.js"])
+        self.assertEqual(built.call_args[0][0], ["run", "--sandbox", "--agent", "--allow-host", "a.dev", "--allow-write", "out", "--allow-env", "KEY", "--policy", "p.json", "--", "node", "x.js"])
 
     def test_refusing_is_exit_3(self):
-        args = types.SimpleNamespace(agent=False, allow_host=[], allow_write=[], policy=None, cmd=["x"])
+        args = types.SimpleNamespace(agent=False, allow_host=[], allow_write=[], allow_env=[], policy=None, cmd=["x"])
         with mock.patch.object(sandbox, "wsl_command", side_effect=ValueError("no")), mock.patch.object(cli.subprocess, "run") as ran:
             self.assertEqual(cli._run_in_wsl(args), 3)
         ran.assert_not_called()

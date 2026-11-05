@@ -603,10 +603,10 @@ class RunInSandboxTests(unittest.TestCase):
             self.find(outside, [".", str(Path(outside).parent)])
 
     def test_the_command_goes_to_the_runtime_unchanged(self):
-        with mock.patch("verfy.cli.sandboxes.find_runtime", return_value="/opt/bin/srt"), mock.patch("verfy.cli.os.execv") as execv, mock.patch.dict(os.environ):
+        with mock.patch("verfy.cli.sandboxes.find_runtime", return_value="/opt/bin/srt"), mock.patch("verfy.cli.os.execve") as execv, mock.patch.dict(os.environ):
             run_cli(self.home, "run", "--sandbox", "--allow-host", "example.com", "--", "sh", "-c", "echo a -- b")
-            self.assertEqual(os.environ[sandbox.MARK_ENV], "srt")
-        exe, argv = execv.call_args[0]
+            self.assertEqual(env[sandbox.MARK_ENV], "srt")
+        exe, argv, env = execv.call_args[0]
         self.assertEqual(exe, "/opt/bin/srt")
         self.assertEqual(argv[:2], ["/opt/bin/srt", "--settings"])
         self.assertEqual(argv[3:], ["--", "sh", "-c", "echo a -- b"])
@@ -614,7 +614,7 @@ class RunInSandboxTests(unittest.TestCase):
         self.assertTrue(Path(argv[2]).is_relative_to(self.home))
 
     def test_no_sandbox_means_no_run(self):
-        with mock.patch("verfy.cli.sandboxes.find_runtime", side_effect=ValueError("`srt` is not installed")), mock.patch("verfy.cli.os.execv") as execv:
+        with mock.patch("verfy.cli.sandboxes.find_runtime", side_effect=ValueError("`srt` is not installed")), mock.patch("verfy.cli.os.execve") as execv:
             code, _, err = run_cli(self.home, "run", "--sandbox", "--", "echo", "hi")
         self.assertEqual(code, 3)
         self.assertIn("not installed", err)
@@ -625,7 +625,7 @@ class RunInSandboxTests(unittest.TestCase):
             run_cli(self.home, "run", "--sandbox")
 
     def test_print_shows_the_settings_and_stops(self):
-        with mock.patch("verfy.cli.os.execv") as execv:
+        with mock.patch("verfy.cli.os.execve") as execv:
             code, out, _ = run_cli(self.home, "run", "--sandbox", "--print", "--", "echo", "hi")
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["filesystem"]["allowWrite"], ["."])
