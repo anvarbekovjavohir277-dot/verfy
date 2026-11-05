@@ -539,16 +539,12 @@ def cmd_wrap(args) -> int:
         raise SystemExit("verfy wrap: no `mcpServers` in that file")
     exe = shutil.which("verfy") or "verfy"
     wrapped = []
-    skipped = []
     for name, spec in cfg[key].items():
         if not isinstance(spec, dict):
             continue
         extra = ["--policy", args.policy] if args.policy else []
         if "command" not in spec:
             if cfgscan.server_url(spec):
-                if str(spec.get("type") or spec.get("transport")).lower() == "sse":
-                    skipped.append(name)  # the older SSE transport: the bridge speaks Streamable HTTP
-                    continue
                 _wrap_remote(spec, name, exe, extra)
                 wrapped.append(name)
             continue
@@ -557,8 +553,6 @@ def cmd_wrap(args) -> int:
         spec["args"] = ["proxy", "--name", name, *extra, "--", spec["command"], *spec.get("args", [])]
         spec["command"] = exe
         wrapped.append(name)
-    if skipped:
-        print(f"[verfy] left as they are, the older SSE transport is not supported: {', '.join(skipped)}", file=sys.stderr)
     out = json.dumps(cfg, indent=2, ensure_ascii=False) + "\n"
     if args.write:
         backup = path.with_suffix(path.suffix + ".verfy-backup")
@@ -1514,7 +1508,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("proxy", help="run an MCP server behind the Verfy gateway")
     p.add_argument("--name", help="server name used in receipts and verfy.lock")
-    p.add_argument("--url", help="a remote server's Streamable HTTP address, instead of a command after `--`")
+    p.add_argument("--url", help="a remote server's address (Streamable HTTP or the older SSE), instead of a command after `--`")
     p.add_argument("--bearer-env", metavar="VAR", help="the environment variable that holds the remote server's bearer token")
     p.add_argument("--policy")
     p.add_argument("--workspace")
@@ -1524,7 +1518,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_proxy)
 
     p = sub.add_parser("bridge", help="a stdio MCP server that forwards to a remote one; `verfy wrap` sets it up behind the gateway")
-    p.add_argument("--url", required=True, help="the remote server's Streamable HTTP address")
+    p.add_argument("--url", required=True, help="the remote server's address (Streamable HTTP or the older SSE)")
     p.set_defaults(fn=cmd_bridge)
 
     p = sub.add_parser("wrap", help="put every server in an MCP config behind the gateway")

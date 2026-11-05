@@ -2,6 +2,12 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.14.0 (2026-11-05)
+
+- **Remote servers on the older SSE transport.** `verfy proxy --url`, `verfy wrap`, `verfy lock check` and `verfy scan --live` now fall back to HTTP+SSE when a server refuses the first POST the way the MCP specification describes. The address the server names for its messages must be on the same server, so a key does not go anywhere else. OAuth sign-in is still not supported.
+- **The installers check more.** With a signed-in GitHub CLI they verify the build attestation before installing, because a checksum from the same release shows only that the download is whole. They refuse a version that does not look like 1.2.3 before it reaches `rm -rf`, and the shell installer no longer writes a `VERFY_BIN_DIR` with unsafe characters to your shell profile.
+- `SECURITY.md` and `/.well-known/security.txt` now give an email address next to GitHub's private reporting.
+
 ## 0.13.0 (2026-11-05)
 
 - **Cursor hook (beta).** `verfy hook install --cursor --write` adds `verfy hook cursor` to `~/.cursor/hooks.json`, so Cursor's terminal commands, file reads and MCP calls are checked before they run and each gets a signed receipt. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes, and `.cursor/hooks.json` is now protected from the agent. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered. This follows Cursor's documentation and has not yet been run inside Cursor itself.

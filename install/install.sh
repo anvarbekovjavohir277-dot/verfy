@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://verfy.dev/install.sh | sh
 #
-# Environment: VERFY_VERSION=0.2.0 pins a version; VERFY_INSTALL_DIR (default
+# Environment: VERFY_VERSION=1.2.3 pins a version; VERFY_INSTALL_DIR (default
 # ~/.local/share/verfy) and VERFY_BIN_DIR (default ~/.local/bin) move it;
 # VERFY_NO_MODIFY_PATH=1 leaves your shell profile alone; VERFY_DOWNLOAD_BASE
 # replaces the release URL (a mirror, or a local test server).
@@ -14,6 +14,7 @@ REPO="anvarbekovjavohir277-dot/verfy-releases"
 
 say() { printf 'verfy: %s\n' "$*"; }
 fail() { printf 'verfy: error: %s\n' "$*" >&2; exit 1; }
+is_version() { printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; }
 
 case "$(uname -s)/$(uname -m)" in
   Linux/x86_64 | Linux/amd64) target=linux-x64 ;;
@@ -37,6 +38,7 @@ fi
 if [ -n "${VERFY_DOWNLOAD_BASE:-}" ]; then
   base="$VERFY_DOWNLOAD_BASE"
 elif [ -n "${VERFY_VERSION:-}" ]; then
+  is_version "$VERFY_VERSION" || fail "VERFY_VERSION must look like 1.2.3"
   base="https://github.com/$REPO/releases/download/v$VERFY_VERSION"
 else
   base="https://github.com/$REPO/releases/latest/download"
@@ -59,9 +61,19 @@ else
 fi
 [ "$got" = "$want" ] || fail "checksum mismatch for $file; nothing was installed"
 
+# The checksum shows the download is whole, not who built it: both come from the same release.
+# The attestation shows this repository's workflow built it. Checking it needs a signed-in GitHub CLI.
+if [ -z "${VERFY_DOWNLOAD_BASE:-}" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  gh attestation verify "$tmp/$file" -R "$REPO" >/dev/null 2>&1 || fail "the build attestation of $file did not verify; nothing was installed"
+  say "build attestation verified"
+else
+  say "checksum verified; to check who built it, see https://verfy.dev/docs#install"
+fi
+
 tar -xzf "$tmp/$file" -C "$tmp"
 version=$("$tmp/verfy/verfy" --version 2>/dev/null | awk '{ print $2 }') || true
 [ -n "$version" ] || fail "the downloaded verfy does not run on this system; use: pip install verfy"
+is_version "$version" || fail "the downloaded verfy reported an unexpected version; nothing was installed"
 
 root="${VERFY_INSTALL_DIR:-$HOME/.local/share/verfy}"
 bin="${VERFY_BIN_DIR:-$HOME/.local/bin}"
@@ -77,6 +89,9 @@ case ":$PATH:" in
     line="export PATH=\"$bin:\$PATH\""
     if [ -n "${VERFY_NO_MODIFY_PATH:-}" ]; then
       say "$bin is not on your PATH; add this line to your shell profile: $line"
+    elif ! printf '%s' "$bin" | LC_ALL=C grep -Eq '^[A-Za-z0-9_./:@+ ~-]+$'; then
+      # a shell profile runs every time a shell opens, so nothing here may be read as a command
+      say "$bin has characters that are not safe to write to your shell profile; add it to your PATH yourself"
     else
       case "$(basename "${SHELL:-sh}")" in
         zsh) profile="$HOME/.zshrc" ;;

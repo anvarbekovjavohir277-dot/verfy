@@ -27,7 +27,7 @@ Verfy checks every tool call a coding agent makes against your policy before it 
 
 ## Verfy and scanners
 
-Scanners judge a tool when you scan it. Verfy is built for what happens after: the tool changes, the agent calls it, and someone later asks what ran. Use both. From each project's own documentation, checked 2026-10-24 ([full table and sources](https://verfy.dev/compare)):
+Scanners judge a tool when you scan it. Verfy is built for what happens after: the tool changes, the agent calls it, and someone later asks what ran. Use both. From each project's own README, checked 2026-11-05 at the versions listed on the page ([full table and sources](https://verfy.dev/compare)):
 
 | | [Snyk Agent Scan](https://github.com/snyk/agent-scan) (formerly Invariant mcp-scan) | [Cisco MCP Scanner](https://github.com/cisco-ai-defense/mcp-scanner) | [mcp-context-protector](https://github.com/trailofbits/mcp-context-protector) (Trail of Bits) | Verfy |
 | --- | --- | --- | --- | --- |

@@ -64,7 +64,7 @@ verfy wrap ~/.cursor/mcp.json --write      # wrap every server in a config, loca
 
 For one remote server, `verfy proxy --name docs --url https://mcp.example.com/mcp --bearer-env DOCS_TOKEN` does it directly: the agent talks stdio to Verfy, and Verfy talks HTTP to the server. The token stays in the environment. It is never on a command line or in `verfy.lock`, and Verfy refuses to send it over plain http. OAuth is not supported yet.
 
-A remote server goes behind the gateway through `verfy bridge`, which forwards to its Streamable HTTP address. Its headers move to the entry's `env`, so a key is not on a command line. Not covered yet: the older SSE transport, servers that sign in with OAuth in your MCP client, and messages a server sends outside an answer to a request.
+A remote server goes behind the gateway through `verfy bridge`, which forwards to its Streamable HTTP address, or falls back to the older HTTP+SSE transport if that is all the server has. Over SSE, the address for messages must be on the same server, so a key does not go anywhere else. Its headers move to the entry's `env`, so a key is not on a command line. Not covered yet: servers that sign in with OAuth in your MCP client, and, over Streamable HTTP, messages a server sends outside an answer to a request.
 
 The gateway scans each `tools/list` answer, hides poisoned or drifted tools, checks every `tools/call`, can ask the user through MCP elicitation (`"on_ask": "elicit"`), and writes a receipt for every call. Secrets in tool results and resources (API keys, tokens, private keys in the formats the scanner knows) are replaced with `[REDACTED:<rule>]` before the agent reads them; the receipt keeps the hash of the original result. Set `"redact_output": false` to turn this off.
 
@@ -126,7 +126,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.13.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.14.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -135,7 +135,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 { "mcpServers": { "docs": { "type": "http", "url": "https://mcp.example.com/mcp", "headers": { "Authorization": "Bearer ${MCP_TOKEN}" } } } }
 ```
 
-Verfy does not follow redirects, so a key only goes to the address in the config, and it never prints header values. Servers that only speak the older SSE transport are not supported yet.
+Verfy does not follow redirects, so a key only goes to the address in the config, and it never prints header values. A server that only speaks the older SSE transport is read the same way.
 
 ## Check and verify
 

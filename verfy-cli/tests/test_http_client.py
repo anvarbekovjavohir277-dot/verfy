@@ -263,14 +263,11 @@ class WrapRemoteTests(unittest.TestCase):
         servers, _ = self.wrap({"docs": {"url": "https://mcp.example.com/mcp", "bearer_token_env_var": "TOK", "env_http_headers": {"X-Key": "KEY"}}})
         self.assertEqual(json.loads(servers["docs"]["env"][HEADERS_ENV]), {"X-Key": "${KEY}", "Authorization": "Bearer ${TOK}"})
 
-    def test_the_older_sse_transport_is_left_alone_and_said_so(self):
+    def test_the_older_sse_transport_goes_behind_the_gateway_too(self):
         servers, err = self.wrap({"old": {"type": "sse", "url": "https://mcp.example.com/sse"}})
-        self.assertEqual(servers["old"]["url"], "https://mcp.example.com/sse")
-        self.assertIn("old", err)
-
-
-class GatewayOverBridgeTests(unittest.TestCase):
-    """The real thing: `verfy proxy` starts `verfy bridge` as its server, and a client talks to it over stdio."""
+        self.assertIn("bridge", servers["old"]["args"])
+        self.assertIn("https://mcp.example.com/sse", servers["old"]["args"])
+        self.assertNotIn("url", servers["old"])
 
     def session(self, srv, home, *calls):
         src = str(ROOT / "src")

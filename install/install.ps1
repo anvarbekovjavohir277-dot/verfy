@@ -2,7 +2,7 @@
 #
 #   irm https://verfy.dev/install.ps1 | iex
 #
-# Before running it you can set $env:VERFY_VERSION = "0.2.0" to pin a version,
+# Before running it you can set $env:VERFY_VERSION = "1.2.3" to pin a version,
 # $env:VERFY_INSTALL_DIR to move it (default %LOCALAPPDATA%\Programs\verfy) and
 # $env:VERFY_NO_MODIFY_PATH = "1" to leave your user PATH alone; $env:VERFY_DOWNLOAD_BASE
 # replaces the release URL (a mirror, or a local test server).
@@ -20,7 +20,13 @@
   # Windows on ARM runs the x64 build through its built-in emulation.
   $file = "verfy-windows-x64.zip"
   if ($env:VERFY_DOWNLOAD_BASE) { $base = $env:VERFY_DOWNLOAD_BASE }
-  elseif ($env:VERFY_VERSION) { $base = "https://github.com/$repo/releases/download/v$($env:VERFY_VERSION)" }
+  elseif ($env:VERFY_VERSION) {
+    if ($env:VERFY_VERSION -notmatch '^\d+\.\d+\.\d+$') {
+      Write-Host "verfy: error: VERFY_VERSION must look like 1.2.3" -ForegroundColor Red
+      return
+    }
+    $base = "https://github.com/$repo/releases/download/v$($env:VERFY_VERSION)"
+  }
   else { $base = "https://github.com/$repo/releases/latest/download" }
 
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -40,10 +46,24 @@
     $got = (Get-FileHash -Path (Join-Path $tmp $file) -Algorithm SHA256).Hash.ToLower()
     if ($got -ne $want) { throw "checksum mismatch for $file; nothing was installed" }
 
+    # The checksum shows the download is whole, not who built it: both come from the same release.
+    # The attestation shows this repository's workflow built it. Checking it needs a signed-in GitHub CLI.
+    $checked = $false
+    if (-not $env:VERFY_DOWNLOAD_BASE -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+      cmd /c "gh auth status >nul 2>&1"
+      if ($LASTEXITCODE -eq 0) {
+        cmd /c "gh attestation verify `"$(Join-Path $tmp $file)`" -R $repo >nul 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "the build attestation of $file did not verify; nothing was installed" }
+        $checked = $true
+      }
+    }
+    if ($checked) { Write-Host "verfy: build attestation verified" }
+    else { Write-Host "verfy: checksum verified; to check who built it, see https://verfy.dev/docs#install" }
+
     Expand-Archive -Path (Join-Path $tmp $file) -DestinationPath $tmp
     $exe = Join-Path $tmp "verfy\verfy.exe"
     $out = (& $exe --version | Out-String).Trim()
-    if ($out -match "^verfy (\S+)$") { $version = $Matches[1] }
+    if ($out -match "^verfy (\d+\.\d+\.\d+)$") { $version = $Matches[1] }
     else { throw "the downloaded verfy did not start on this system (it printed: $out); use: pip install verfy" }
 
     if ($env:VERFY_INSTALL_DIR) { $root = $env:VERFY_INSTALL_DIR } else { $root = Join-Path $env:LOCALAPPDATA "Programs\verfy" }
