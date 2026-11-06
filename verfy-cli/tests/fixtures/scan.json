@@ -208,13 +208,13 @@
  {
   "file": "shadow-mail.json",
   "expect": {
-   "score": 39,
+   "score": 10,
    "grade": "F",
    "tools": [
     {
      "name": "get_weather",
      "sha256": "sha256:b5bb75eea638ae5141804e13b21b8d71833d47477a20c03ccdb264b49081b501",
-     "score": 39,
+     "score": 10,
      "grade": "F",
      "capabilities": [],
      "rules": [

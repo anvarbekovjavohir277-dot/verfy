@@ -2,6 +2,25 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.17.0 (2026-11-06)
+
+A second internal attack test found these. The [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) has the numbers, including what a fresh list still got through. It was not an independent test.
+
+- **A `verfy.policy.json` that came with a repository can no longer switch Verfy off.** It used to replace your policy and your team's, so a cloned repo could disable every rule. Now it can only make Verfy stricter: anything that would loosen it is left out, and `verfy check` says so. If the file is yours, read it and run `verfy policy trust`; if it changes, you trust it again. `verfy policy use --project` trusts what it writes. A team policy is never loosened by a file in a folder. **If you rely on a project policy that loosens something, run `verfy policy trust` after you upgrade.**
+- **Rules that guard Verfy itself cannot be disabled**, by any policy.
+- **The guard reads Windows commands.** `Get-Content ~\.ssh\id_rsa`, `%USERPROFILE%`, `$env:USERPROFILE`, `rd /s /q`, `powershell -c`, `cmd /c` and encoded commands were mostly allowed. Registry run keys, scheduled tasks, Defender settings and download tools now need a person.
+- **Shell structure no longer hides a command:** `if`, `for`, functions, `alias`, variables, `$(...)`, brace expansion, `find -exec`, `flock`, `strace`, `chroot`, `parallel` and `script -c`. A key file is noticed wherever the command names it.
+- **More ways to read a key or run code need a person:** inline code in more languages, `LD_PRELOAD` and `GIT_SSH_COMMAND`, printing stored tokens (`gh auth token`, `aws secretsmanager`, `kubectl get secrets`), browser and keychain files, tunnels, the Docker socket, installing from a URL, wiping a database, removing logs, and skipping git hooks.
+- **A sensitive path is seen under any argument name**, also nested, and whatever its case, because macOS and Windows ignore case.
+- **SQL and URLs:** comments inside SQL, `COPY ... TO PROGRAM`, `pg_read_file`, `INTO OUTFILE`; `gopher:` and `dict:` URLs, metadata behind `nip.io`, the AWS IPv6 and ECS metadata addresses. Private network addresses need a person; `localhost` does not.
+- **MCP prompts are pinned like tools,** as `prompt:<name>` in `verfy.lock`, and a changed one is hidden. Their text is scanned when fetched, and resources that fail the scan are hidden. **After you upgrade, servers with prompts show new entries once:** review them and run `verfy lock check --update`.
+- **The scanner sees through disguises:** invisible characters, Unicode tags, leet, spaced letters, base64, other languages, annotations and output schemas, parameter names, look-alike tool names, and a fixed email address.
+- **Secrets:** unquoted settings such as `DB_PASSWORD=...`, passwords in URLs, bearer tokens, JWTs, and keys from AWS, GitLab, npm, PyPI, Supabase, SendGrid, Hugging Face, Azure and others are now recognised.
+- **`verfy wrap` no longer prints the values in `env` and `headers`,** and writes `verfy`, not a path on your machine, into a config in the project.
+- **`verfy update` on a standalone build downloads the install script and then runs it,** instead of piping it into a shell.
+- **`verfy verify --ledger FILE` on an empty file says so and exits 1.** A hook input with no tool name needs a person. A `VERFY_HOME` elsewhere gets the same protection as `~/.verfy`. Bad input gives a short error, not a Python traceback.
+- **The hook accepts a byte order mark,** which Windows PowerShell adds when its output encoding is UTF-8.
+
 ## 0.16.1 (2026-11-06)
 
 - **A sandboxed command can no longer create a missing `verfy.lock`, policy, `.mcp.json`, agent settings or git hooks on Linux.** 0.16.0 closed these only when they already existed there, so a command could write a new `.mcp.json` that runs later, outside the sandbox. A review found this. They are now closed on every system whether they exist or not, with a test for each.

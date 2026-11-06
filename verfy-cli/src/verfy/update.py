@@ -121,8 +121,9 @@ def command(how: str) -> tuple[list[str], dict] | None:
         # <root>/current/verfy.exe on Windows, <root>/<version>/verfy elsewhere
         env["VERFY_INSTALL_DIR"] = str(exe.parent.parent)
         if os.name == "nt":
-            return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", f"irm {INSTALL_PS1} | iex"], env
-        return ["sh", "-c", f'script=$(curl -fsSL {INSTALL_SH} || wget -qO- {INSTALL_SH}) && printf "%s\\n" "$script" | sh'], env
+            return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                    f'$f = Join-Path $env:TEMP ("verfy-install-" + [guid]::NewGuid() + ".ps1"); Invoke-RestMethod {INSTALL_PS1} -OutFile $f; & $f; $c = $LASTEXITCODE; Remove-Item $f; exit $c'], env
+        return ["sh", "-c", f'f=$(mktemp) && {{ curl -fsSL {INSTALL_SH} -o "$f" || wget -qO "$f" {INSTALL_SH}; }} && sh "$f"; c=$?; rm -f "$f"; exit $c'], env
     if how == "pip":
         return [sys.executable, "-m", "pip", "install", "--upgrade", "--disable-pip-version-check", "verfy"], env
     if how == "pipx":

@@ -33,13 +33,13 @@ from typing import Any, Callable, IO
 from .imports import blocked_tools
 from . import sessions
 from . import team as teamlib
-from ._util import redact_output
+from ._util import redact_output, flatten_strings
 from .lock import LockError, load_lock, pin, safe_name, save_seen, server_pins, update
 from .policy import policy_digest
 from .precheck import check, payment_amount
 from .receipts import Key, Ledger, read_ledger
 from . import sandbox as sandboxes
-from .scanner import scan, unsafe_tools
+from .scanner import scan, unsafe_tools, prompt_tool, text_findings
 
 
 def verfy_home() -> Path:
@@ -83,6 +83,7 @@ class Gateway:
         self.elicits: dict[str, tuple] = {}
         self.tool_meta: dict[str, dict] = {}
         self.imported: dict[str, dict] = {}  # tools another scanner rated high (verfy scan import --save)
+        self.hidden_prompts: set[str] = set()
         self.client_caps: dict = {}
         self.spent = spent_today(read_ledger(ledger_path))
         self.child: subprocess.Popen | None = None
@@ -193,6 +194,16 @@ class Gateway:
             self.pending[self._key(msg["id"])] = ("list",)
         if method == "resources/read" and "id" in msg:
             self.pending[self._key(msg["id"])] = ("read", str(params.get("uri", "")))
+        if method == "prompts/list" and "id" in msg:
+            self.pending[self._key(msg["id"])] = ("prompts",)
+        if method == "resources/list" and "id" in msg:
+            self.pending[self._key(msg["id"])] = ("resources",)
+        if method == "prompts/get" and "id" in msg:
+            name = str(params.get("name", ""))
+            if name in self.hidden_prompts:
+                self._refuse(msg["id"], -32602, f"Verfy hid the prompt `{name}`: it changed since it was approved, or it failed the scan.")
+                return
+            self.pending[self._key(msg["id"])] = ("prompt", name)
         if method == "tools/call":
             if "id" in msg:
                 self._call(msg)
@@ -333,6 +344,13 @@ class Gateway:
                 self._redact(msg, f"{self.server}/{action['tool']}")
             elif p and p[0] == "read":
                 self._redact(msg, f"{self.server} resource {p[1]}")
+            elif p and p[0] == "prompts" and isinstance(msg.get("result"), dict):
+                msg["result"] = self._filter_prompts(msg["result"])
+            elif p and p[0] == "resources" and isinstance(msg.get("result"), dict):
+                msg["result"] = self._filter_resources(msg["result"])
+            elif p and p[0] == "prompt":
+                self._redact(msg, f"{self.server} prompt {p[1]}")
+                self._check_prompt(msg, p[1])
         self.to_client(msg)
 
     def _redact(self, msg: dict, what: str) -> None:
@@ -345,6 +363,49 @@ class Gateway:
                 n += hidden
         if n:
             self.log(f"redacted {n} secret{'s' if n != 1 else ''} in the output of {what}")
+
+    def _filter_prompts(self, result: dict) -> dict:
+        """Prompts are pinned like tools. Their first listing is locked as it is, once the server has a lock."""
+        prompts = [p for p in result.get("prompts") or [] if isinstance(p, dict) and isinstance(p.get("name"), str)]
+        as_tools = [prompt_tool(p) for p in prompts]
+        try:
+            pins = server_pins(load_lock(self.lock_path), self.server)
+        except LockError as e:
+            self.log(f"{e}; prompts from `{self.server}` were not checked against it")
+            pins = None
+        first_use = pins is not None and not any(k.startswith("prompt:") for k in pins)
+        if first_use:
+            def lock_all(lock: dict) -> None:
+                for t in as_tools:
+                    pin(lock, self.server, t, "first-use")
+            update(self.lock_path, lock_all)
+        report = scan(as_tools, self.server, None if first_use or pins is None else {k: v for k, v in pins.items() if k.startswith("prompt:")})
+        on_new = (self.policy.get("lock") or {}).get("on_new", "ask")
+        hidden = {t["name"] for t in report["tools"] if t["pin"] == "changed" or (t["pin"] == "new" and on_new != "allow") or any(f["severity"] == "critical" for f in t["findings"])}
+        self.hidden_prompts = {n.removeprefix("prompt:") for n in hidden}
+        if hidden:
+            self.log(f"hidden prompts from `{self.server}`: {', '.join(sorted(self.hidden_prompts))}")
+        return {**result, "prompts": [p for p in prompts if p["name"] not in self.hidden_prompts]}
+
+    def _filter_resources(self, result: dict) -> dict:
+        """A resource list changes all the time, so it is not pinned, but what it tells the model is scanned."""
+        keep = []
+        for r in result.get("resources") or []:
+            texts = [str(r.get(k)) for k in ("name", "title", "description") if isinstance(r, dict) and r.get(k)]
+            if any(f["severity"] == "critical" for t in texts for f in text_findings(t)):
+                self.log(f"hid a resource from `{self.server}` that failed the scan: {str(r.get('uri'))[:80]}")
+                continue
+            keep.append(r)
+        return {**result, "resources": keep}
+
+    def _check_prompt(self, msg: dict, name: str) -> None:
+        """A prompt's text is not in the lock, because it depends on its arguments, so it is scanned when it is fetched."""
+        for _, text in flatten_strings(msg.get("result") or {}):
+            if any(f["severity"] == "critical" for f in text_findings(text)):
+                self.log(f"blocked the prompt `{name}` from `{self.server}`: its text failed the scan")
+                msg.pop("result", None)
+                msg["error"] = {"code": -32001, "message": f"Verfy blocked the prompt `{name}`: its text failed the scan."}
+                return
 
     def _filter_tools(self, result: dict) -> dict:
         tools = result.get("tools")

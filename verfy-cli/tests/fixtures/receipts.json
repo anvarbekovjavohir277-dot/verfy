@@ -20,7 +20,7 @@
    "decision": {
     "verdict": "allow",
     "rules": [],
-    "policy_sha256": "sha256:41ec69c548eb77f7e42ad89af6183233d54939de5ff23ad516206e4bfe949814"
+    "policy_sha256": "sha256:c431f52560bd80a878ebe10accb6ea07746beeea3e47b07d3a926b8c4c76ba1a"
    },
    "outcome": {
     "status": "ok",
@@ -28,13 +28,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "SiTM6xnDTn9JQ8yo551Gz3-N1rLu3M_EfXvVS0Qbbo7NdpeMFmXChONp6Zy3MQbCfKnltAFLTpfSz1USPmt1Aw"
+   "sig": "sD5jn3-iODe-WyFMNRcnpeqx0fvr5lucbACGj631S4N5iLYEK7bes8TP1hvB_sF9535Ya4lsTGJXsKjZ-becDA"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0001",
    "seq": 1,
-   "prev": "sha256:c7f55197f51139c91819a3828c5bca020895a36dfdc4586aec6e8a2f4db43786",
+   "prev": "sha256:afcfffe2a510a5c7d6d44859c4b06ace2cd36c9074d74de1ab73426115c12bb8",
    "issued_at": "2026-10-11T09:00:01.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -47,9 +47,10 @@
    "decision": {
     "verdict": "deny",
     "rules": [
-     "VFY-SH-001"
+     "VFY-SH-001",
+     "VFY-SH-030"
     ],
-    "policy_sha256": "sha256:41ec69c548eb77f7e42ad89af6183233d54939de5ff23ad516206e4bfe949814"
+    "policy_sha256": "sha256:c431f52560bd80a878ebe10accb6ea07746beeea3e47b07d3a926b8c4c76ba1a"
    },
    "outcome": {
     "status": "blocked",
@@ -57,13 +58,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "IExp8iQLdkJyaXIaayWOsN89Y-iled6hgUC6ssLg3E62swI4e-OEoDZPEqv_f-2nY050oREZNF_SuEKb3HYvDw"
+   "sig": "Xg6JEFFQLbcX8VmMtWp_5KeNPWJjCYANk1wBCZju7P6cyh3p6l3T8YZkPcwQWXI6BkqAEtYVDHJpHwWKE6SpDw"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0002",
    "seq": 2,
-   "prev": "sha256:e9b266ea5b46121efe34d3a98cb357be98452d23d5030b161eee64d57af4d699",
+   "prev": "sha256:99d08b9d82adf642e0555bd9f8a2029e075c6b828bd13a92a3b1af307d471df3",
    "issued_at": "2026-10-11T09:00:02.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -76,7 +77,7 @@
    "decision": {
     "verdict": "allow",
     "rules": [],
-    "policy_sha256": "sha256:41ec69c548eb77f7e42ad89af6183233d54939de5ff23ad516206e4bfe949814"
+    "policy_sha256": "sha256:c431f52560bd80a878ebe10accb6ea07746beeea3e47b07d3a926b8c4c76ba1a"
    },
    "outcome": {
     "status": "asked",
@@ -84,13 +85,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "SPdcNa09B3hmJ1Edu24Avkt29tWNjbMeP2Fnh5Zj-eG4mlswF6AlEkwjk8dOnOjsyj7n2M1uiLGwxBPCiQfFAg"
+   "sig": "VijLE3FBaA5pnD9yEyQ-57QLMYyhvsIrMYBetWYdMrx5hWs4Lruy1bx786ReQm_u8nob_XK5tCbLnVmxbWPGBw"
   },
   {
    "v": "verfy.receipt/1",
    "id": "rcpt_vector0003",
    "seq": 3,
-   "prev": "sha256:d566034fa4dccf7113a94163092d2d1653d090e96ece1150f8fe56ea4cd5fee5",
+   "prev": "sha256:bca27cba09d220ca1e91fa5b526aaa1e425bb92aae6f73bdffc4512d7683b203",
    "issued_at": "2026-10-11T09:00:03.000Z",
    "agent": "vector-agent",
    "session": "ses_vectors",
@@ -105,7 +106,7 @@
     "rules": [
      "VFY-FS-003"
     ],
-    "policy_sha256": "sha256:41ec69c548eb77f7e42ad89af6183233d54939de5ff23ad516206e4bfe949814"
+    "policy_sha256": "sha256:c431f52560bd80a878ebe10accb6ea07746beeea3e47b07d3a926b8c4c76ba1a"
    },
    "outcome": {
     "status": "asked",
@@ -113,13 +114,13 @@
    },
    "tool_sha256": null,
    "kid": "atl_65b60673d6ed884b",
-   "sig": "PgQenfzBcqDI62GbyUdKqV6n-b4UGGW77O0cwAqWXKsq5In5F4Ns7QIOLCd0c9MT9KAOODqiWLtVa1pzGByRAA"
+   "sig": "u1qSZGtKGG4aTReiub8SKIt1cm4_v6EQTqldkgOWqluEdMnuq5sVJMY98KKF3slE6_jkn1pSIA-iUOW90pHpBw"
   }
  ],
  "hashes": [
-  "sha256:c7f55197f51139c91819a3828c5bca020895a36dfdc4586aec6e8a2f4db43786",
-  "sha256:e9b266ea5b46121efe34d3a98cb357be98452d23d5030b161eee64d57af4d699",
-  "sha256:d566034fa4dccf7113a94163092d2d1653d090e96ece1150f8fe56ea4cd5fee5",
-  "sha256:1525257c049e602168a8e5eca79c92c785b4ff981c3be134867bdbd23014415e"
+  "sha256:afcfffe2a510a5c7d6d44859c4b06ace2cd36c9074d74de1ab73426115c12bb8",
+  "sha256:99d08b9d82adf642e0555bd9f8a2029e075c6b828bd13a92a3b1af307d471df3",
+  "sha256:bca27cba09d220ca1e91fa5b526aaa1e425bb92aae6f73bdffc4512d7683b203",
+  "sha256:0452eb177f4f09cb9cb50d9dd9ee9d2888fcffa770d9da86293779d7b3b979a4"
  ]
 }

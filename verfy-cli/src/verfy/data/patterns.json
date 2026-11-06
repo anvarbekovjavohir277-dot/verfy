@@ -69,6 +69,118 @@
    "\\b(?:api[_-]?key|secret[_-]?key|client[_-]?secret|password|passwd|auth[_-]?token|access[_-]?token)\\b\\s*[:=]\\s*[\"']([^\"'\\s]{12,})[\"']",
    "i",
    "medium"
+  ],
+  [
+   "aws-secret-key",
+   "AWS secret access key",
+   "aws_?secret_?(?:access_?)?key\\s*[:=]\\s*[\\\"']?([A-Za-z0-9/+=]{40})",
+   "i",
+   "high"
+  ],
+  [
+   "gitlab-token",
+   "GitLab token",
+   "\\bglpat-[A-Za-z0-9_\\-]{20,}",
+   "",
+   "high"
+  ],
+  [
+   "npm-token",
+   "npm token",
+   "\\bnpm_[A-Za-z0-9]{36}\\b",
+   "",
+   "high"
+  ],
+  [
+   "pypi-token",
+   "PyPI token",
+   "\\bpypi-[A-Za-z0-9_\\-]{50,}",
+   "",
+   "high"
+  ],
+  [
+   "jwt",
+   "JSON web token",
+   "\\beyJ[A-Za-z0-9_\\-]{10,}\\.eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]{10,}",
+   "",
+   "high"
+  ],
+  [
+   "supabase-key",
+   "Supabase secret key",
+   "\\bsb_secret_[A-Za-z0-9_\\-]{20,}",
+   "",
+   "high"
+  ],
+  [
+   "sendgrid-key",
+   "SendGrid API key",
+   "\\bSG\\.[A-Za-z0-9_\\-]{16,}\\.[A-Za-z0-9_\\-]{16,}",
+   "",
+   "high"
+  ],
+  [
+   "huggingface-token",
+   "Hugging Face token",
+   "\\bhf_[A-Za-z0-9]{30,}",
+   "",
+   "high"
+  ],
+  [
+   "digitalocean-token",
+   "DigitalOcean token",
+   "\\bdop_v1_[a-f0-9]{64}\\b",
+   "",
+   "high"
+  ],
+  [
+   "shopify-token",
+   "Shopify token",
+   "\\bshp(?:at|ss|ca)_[a-f0-9]{32}\\b",
+   "",
+   "high"
+  ],
+  [
+   "age-key",
+   "age secret key",
+   "\\bAGE-SECRET-KEY-1[A-Z0-9]{58}\\b",
+   "",
+   "high"
+  ],
+  [
+   "azure-key",
+   "Azure storage key",
+   "\\bAccountKey=([A-Za-z0-9+/=]{40,})",
+   "",
+   "high"
+  ],
+  [
+   "twilio-key",
+   "Twilio API key",
+   "\\bSK[a-f0-9]{32}\\b",
+   "",
+   "high"
+  ],
+  [
+   "url-password",
+   "password in a URL",
+   "\\b[a-z][a-z0-9+.\\-]*://[^\\s:/@]+:([^\\s:/@]{6,})@",
+   "i",
+   "medium"
+  ],
+  [
+   "bearer-token",
+   "bearer token",
+   "\\bbearer\\s+([A-Za-z0-9._~+/\\-]{20,}=*)",
+   "i",
+   "medium"
+  ],
+  [
+   "env-secret",
+   "secret in a setting",
+   "\\b(?:[A-Za-z0-9]+_)*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY)(?:_[A-Za-z0-9]+)*\\s*[:=]\\s*(?=[^\\s\\\"']*[0-9])([A-Za-z0-9_\\-+/=.!@#%^*~]{12,})",
+   "i",
+   "medium"
   ]
  ],
  "placeholders": [
@@ -263,7 +375,7 @@
   [
    "VFY-SH-020",
    "ask",
-   "(?:^|[;&|(]\\s*)(?:\\$\\(|`|\\$\\{?(?!HOME\\b)[A-Za-z_])",
+   "(?:^|[;&|(]\\s*)(?:\\$\\(|`|\\$\\{?(?!HOME\\b|env:)[A-Za-z_])",
    "",
    "The command name is computed when it runs, so Verfy cannot tell what it is."
   ],
@@ -336,6 +448,349 @@
    "\\b(?:docker|podman)\\s+(?:container\\s+)?run\\b[^\\n]*(?:--privileged|--pid[= ]host|(?:\\s-v\\s*|--volume[= ])(?:/:|/var/run/docker\\.sock|(?:~|\\$HOME|\\$\\{HOME\\})[/:])|--mount[= ]\\S*(?:source|src)=(?:/,|/var/run/docker\\.sock))",
    "",
    "Gives a container the host's disk or Docker itself."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\b(?:perl|ruby|php|lua|deno|gawk|mawk|awk)\\b[^\\n]*(?:\\bsystem\\s*\\(|\\bexec\\s*\\(|\\bpopen\\s*\\(|\\bos\\.execute\\b|\\bunlink\\b|\\brm_rf\\b|\\bFileUtils\\b|\\bDeno\\.remove\\b|\\bshell_exec\\b|\\bpassthru\\b)",
+   "",
+   "Inline code that runs a command or deletes files, which Verfy cannot follow."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\b(?:python[0-9.]*|py|node|deno|bun)\\s+(?:-\\S+\\s+)*-[ce]\\b[^\\n]*(?:__import__|\\.remove\\s*\\(|\\.rename\\s*\\(|\\.unlink\\s*\\(|\\bb64decode\\b)",
+   "",
+   "Inline code that deletes files or decodes something to run it."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\b(?:python[0-9.]*|py|node|perl|ruby|php)\\s+(?:-\\s+)?<<",
+   "",
+   "Feeds code straight into an interpreter."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\bsed\\s+(?:-\\S+\\s+)*['\\\"]?[0-9,$]*e\\s",
+   "",
+   "A sed script that runs a command."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\b(?:vi|vim|nvim|ex)\\b[^\\n]*(?:\\s-c\\s+['\\\"]?:?!|\\s-es?\\b)",
+   "",
+   "Runs an editor in a way that can run commands or write files unseen."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\btar\\b[^\\n]*--(?:to-command|checkpoint-action|use-compress-program)",
+   "",
+   "A tar option that runs a command."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\bgdb\\b[^\\n]*(?:\\bshell\\s|\\s-ex\\s)",
+   "",
+   "Runs a command through a debugger."
+  ],
+  [
+   "VFY-SH-025",
+   "ask",
+   "(?:^|[;&|(]\\s*|\\s)(?:LD_PRELOAD|LD_LIBRARY_PATH|DYLD_INSERT_LIBRARIES|DYLD_LIBRARY_PATH|BASH_ENV|ENV|GIT_SSH|GIT_SSH_COMMAND|GIT_EXTERNAL_DIFF|GIT_PAGER|PAGER|MANPAGER|EDITOR|VISUAL|GIT_EDITOR|GIT_ASKPASS|SSH_ASKPASS|PROMPT_COMMAND)=(?!['\\\"]?(?:cat|less|more|vim?|nano|true|code)(?:['\\\"\\s]|$))",
+   "",
+   "An environment variable that makes another program load or run something."
+  ],
+  [
+   "VFY-SH-025",
+   "ask",
+   "(?:^|[;&|(]\\s*)(?:export\\s+)?(?:PATH|PYTHONPATH|NODE_PATH)=['\\\"]?(?:/tmp|/var/tmp|/dev/shm|\\.(?:[:/'\\\"\\s]|$))",
+   "",
+   "Puts a temporary or relative folder first, so a planted program runs instead of the real one."
+  ],
+  [
+   "VFY-SH-025",
+   "ask",
+   "\\bNODE_OPTIONS=['\\\"]?[^'\\\"\\n]*(?:--require|--import|--loader|--experimental-loader|(?:^|\\s)-r\\s)",
+   "",
+   "Makes Node load a file before the program runs."
+  ],
+  [
+   "VFY-SH-026",
+   "ask",
+   "\\bgh\\s+auth\\s+(?:token\\b|status\\b[^\\n]*(?:\\s-t\\b|--show-token))|\\bnpm\\s+token\\b|\\baws\\s+(?:secretsmanager\\s+get-secret-value|ssm\\s+get-parameters?\\b[^\\n]*--with-decryption|sts\\s+get-session-token|configure\\s+(?:get|export-credentials)|ecr\\s+get-login-password)\\b|\\bgcloud\\s+auth\\s+(?:application-default\\s+)?print-(?:access|identity)-token\\b|\\baz\\s+account\\s+get-access-token\\b|\\bkubectl\\b[^\\n]*\\bget\\s+secrets?\\b|\\bsecurity\\s+(?:find-generic-password|find-internet-password|dump-keychain)\\b|\\bcmdkey\\s+/list\\b|\\bvaultcmd\\b|\\bGet-StoredCredential\\b",
+   "i",
+   "Prints a stored credential or token."
+  ],
+  [
+   "VFY-SH-026",
+   "ask",
+   "\\bGet-ChildItem\\s+Env:|\\b(?:dir|ls|gci)\\s+env:|\\bGet-Item\\s+Env:",
+   "i",
+   "Lists environment variables, which often hold secrets."
+  ],
+  [
+   "VFY-SH-027",
+   "ask",
+   "\\baws\\s+s3\\s+(?:sync|cp)\\s+(?:--\\S+\\s+)*(?:~|\\$HOME|\\$\\{HOME\\}|/)\\S*\\s+s3://",
+   "",
+   "Copies your files to a storage bucket."
+  ],
+  [
+   "VFY-SH-027",
+   "ask",
+   "\\bssh\\b[^\\n]*\\s-[RD]\\s|\\bngrok\\b|\\bcloudflared\\s+tunnel\\b|\\blocaltunnel\\b",
+   "",
+   "Opens a tunnel from the internet to this computer."
+  ],
+  [
+   "VFY-SH-027",
+   "ask",
+   "\\bhttp\\.server\\b[^\\n]*--directory\\s+['\\\"]?(?:~|/|\\$HOME)|\\b(?:http-server|serve)\\s+['\\\"]?(?:~|/|\\$HOME)(?:['\\\"\\s]|$)",
+   "",
+   "Serves the home folder or the whole disk over the network."
+  ],
+  [
+   "VFY-SH-027",
+   "ask",
+   "\\bcurl\\b[^\\n]*--unix-socket\\b|(?:localhost|127\\.0\\.0\\.1):2375\\b",
+   "",
+   "Talks to the Docker API directly, which controls the machine."
+  ],
+  [
+   "VFY-SH-023",
+   "ask",
+   "\\b(?:docker|podman)\\b[^\\n]*(?:--network[= ]host\\b|(?:\\s-v\\s*|--volume[= ])['\\\"]?(?:~|\\$HOME|\\$\\{HOME\\})['\\\"]?[/:])",
+   "",
+   "Gives a container the host's network or home folder."
+  ],
+  [
+   "VFY-SH-028",
+   "ask",
+   "\\bpip[0-9.]*\\s+install\\b[^\\n]*(?:\\s(?:https?://|git\\+)|--index-url|--extra-index-url|\\s-i\\s+https?://)|\\b(?:npm|pnpm|yarn)\\s+(?:i|install|add)\\b[^\\n]*\\s(?:https?://|git\\+|github:)",
+   "",
+   "Installs code from an address that is not the normal package registry."
+  ],
+  [
+   "VFY-SH-005",
+   "ask",
+   "\\bsource\\s+<\\(|(?:^|[;&|(]\\s*)\\.\\s+<\\(|\\b(?:ba|z|da|k)?sh\\s+<\\(",
+   "",
+   "Runs the output of another command as a script."
+  ],
+  [
+   "VFY-SH-029",
+   "ask",
+   "\\brm\\s+(?:-\\S+\\s+)*(?:\\./)?\\.git/?(?=$|[\\s;&|])",
+   "",
+   "Deletes the repository's history."
+  ],
+  [
+   "VFY-SH-029",
+   "ask",
+   "\\bsupabase\\s+db\\s+reset\\b|\\bprisma\\s+migrate\\s+reset\\b|\\bdjango-admin\\s+flush\\b|\\brails\\s+db:(?:drop|reset)\\b|\\bdocker\\s+(?:system|volume|image)\\s+prune\\b",
+   "",
+   "Wipes a database or Docker data."
+  ],
+  [
+   "VFY-SH-029",
+   "ask",
+   "\\bgit\\s+push\\b[^\\n]*--force-with-lease",
+   "",
+   "Force-push rewrites shared history."
+  ],
+  [
+   "VFY-SH-029",
+   "ask",
+   "\\bdd\\b[^;&|\\n]*\\bof=(?:~|\\$HOME|\\$\\{HOME\\})",
+   "",
+   "Overwrites a file in the home folder with raw data."
+  ],
+  [
+   "VFY-SH-006",
+   "ask",
+   "\\bpkexec\\b",
+   "",
+   "Runs a command with administrator rights."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bat\\s+(?:now|midnight|noon|teatime|\\d)|\\bsystemd-run\\b",
+   "",
+   "Schedules something to run outside this session."
+  ],
+  [
+   "VFY-SH-029",
+   "ask",
+   "\\bapi\\.(?:stripe|paypal|wise|adyen|squareup)\\.com\\b",
+   "i",
+   "Calls a payment API directly."
+  ],
+  [
+   "VFY-SH-030",
+   "deny",
+   "\\b(?:remove-item|ri|rm|del|erase|rd|rmdir)\\b[^;&|\\n]*(?:\\s-r\\w*|\\s-fo\\w*|\\s/s\\b)[^;&|\\n]*\\s['\\\"]?(?:[a-z]:[\\\\/]?(?:users[\\\\/][^\\s\\\\/'\\\"]+[\\\\/]?\\*?)?|~[\\\\/]?\\*?|\\$home|\\$env:userprofile|%userprofile%[\\\\/]?\\*?|%homepath%[\\\\/]?\\*?)['\\\"]?(?=$|[\\s;&|])",
+   "i",
+   "Recursive delete of a drive or home folder."
+  ],
+  [
+   "VFY-SH-030",
+   "deny",
+   "\\bformat-volume\\b|\\bclear-disk\\b|\\binitialize-disk\\b|\\bdiskpart\\b|\\bbcdedit\\b|\\bvssadmin\\s+delete\\b",
+   "i",
+   "Wipes a disk or removes the way to restore it."
+  ],
+  [
+   "VFY-SH-031",
+   "ask",
+   "\\b(?:powershell|pwsh)(?:\\.exe)?\\b[^\\n]*\\s-e(?:c|n|nc|nco\\w*)?\\s",
+   "i",
+   "Runs an encoded PowerShell command, which hides what it does."
+  ],
+  [
+   "VFY-SH-032",
+   "ask",
+   "\\bset-executionpolicy\\b|\\b(?:set|add)-mppreference\\b|\\bstop-service\\b|\\bnetsh\\s+advfirewall\\b",
+   "i",
+   "Changes the system's security settings."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\breg(?:\\.exe)?\\s+(?:add|delete|import)\\b|\\b(?:new|set)-itemproperty\\b[^\\n]*(?:\\\\run\\b|hklm:|hkcu:)|\\bschtasks\\b[^\\n]*/create\\b|\\bregister-scheduledtask\\b|\\bsc(?:\\.exe)?\\s+create\\b|\\bnew-service\\b",
+   "i",
+   "Installs something that starts on its own."
+  ],
+  [
+   "VFY-SH-033",
+   "ask",
+   "\\bcertutil\\b[^\\n]*-urlcache\\b|\\bbitsadmin\\b|\\bmshta\\b|\\brundll32\\b|\\bregsvr32\\b|\\bwmic\\b[^\\n]*\\bcreate\\b|\\bstart-process\\b[^\\n]*-verb\\s+runas\\b|\\bnet\\s+(?:user|localgroup)\\b[^\\n]*/add\\b",
+   "i",
+   "Uses a Windows tool often abused to fetch or run code, or to gain rights."
+  ],
+  [
+   "VFY-SH-015",
+   "ask",
+   "\\b(?:invoke-webrequest|invoke-restmethod|iwr|irm)\\b[^\\n]*\\s-(?:infile|body)\\b",
+   "i",
+   "Uploads local data."
+  ],
+  [
+   "VFY-SH-030",
+   "deny",
+   "\\bremove-item\\b[^;&|\\n]*(?:\\$home|\\$env:userprofile|\\s~[\\\\/]?)(?=$|[\\s;&|'\\\"])[^;&|\\n]*\\s-r",
+   "i",
+   "Recursive delete of a drive or home folder."
+  ],
+  [
+   "VFY-SH-030",
+   "deny",
+   "\\b(?:get-childitem|gci|dir|ls)\\b[^|\\n]*(?:~|\\$home|\\$env:userprofile)[^|\\n]*\\|\\s*(?:remove-item|ri|rm|del)\\b",
+   "i",
+   "Deletes everything in the home folder."
+  ],
+  [
+   "VFY-SH-030",
+   "ask",
+   "\\brobocopy\\b[^\\n]*/(?:mir|purge)\\b|\\bcipher\\s+/w\\b",
+   "i",
+   "Wipes or mirrors over a folder."
+  ],
+  [
+   "VFY-SH-031",
+   "ask",
+   "\\binvoke-command\\b|\\[scriptblock\\]::create\\b|\\badd-type\\b|\\[(?:system\\.)?reflection\\.assembly\\]::load|\\[(?:system\\.)?io\\.file\\]::|\\bwscript\\b|\\bcscript\\b|\\bmsiexec\\b|\\bstart\\s+/b\\b",
+   "i",
+   "Runs or changes something in a way Verfy cannot follow."
+  ],
+  [
+   "VFY-SH-032",
+   "ask",
+   "\\bwevtutil\\s+cl\\b|\\bclear-eventlog\\b|\\bset-service\\b|\\bsc(?:\\.exe)?\\s+(?:stop|config|delete)\\b|\\bnetsh\\s+firewall\\b",
+   "i",
+   "Changes the system's security settings or removes its logs."
+  ],
+  [
+   "VFY-SH-034",
+   "ask",
+   "\\bufw\\s+disable\\b|\\biptables\\s+-[FX]\\b|\\bnft\\s+flush\\b|\\bsetenforce\\s+0\\b|\\bsysctl\\s+-w\\b|\\bchattr\\b|\\bvisudo\\b|\\b(?:useradd|adduser|usermod|groupadd)\\b|\\bsystemctl\\s+(?:--user\\s+)?(?:stop|disable|mask)\\b|(?:^|[;&|(]\\s*)(?:sudo\\s+)?passwd\\b",
+   "",
+   "Changes users or the system's security settings."
+  ],
+  [
+   "VFY-SH-035",
+   "ask",
+   "\\bkill\\s+-(?:9|KILL|SIGKILL)\\s+1\\b|\\bpkill\\s+-9\\b|\\bkillall\\s+-9\\b",
+   "",
+   "Kills processes by force."
+  ],
+  [
+   "VFY-SH-036",
+   "ask",
+   "\\bhistory\\s+-c\\b|\\bunset\\s+HISTFILE\\b|\\bHISTFILE=|\\b(?:rm|shred|truncate)\\b[^\\n]*(?:\\.bash_history|\\.zsh_history|/var/log/)",
+   "",
+   "Removes the record of what happened."
+  ],
+  [
+   "VFY-SH-037",
+   "ask",
+   "\\bgit\\s+(?:commit|push)\\b[^\\n]*--no-verify\\b",
+   "",
+   "Skips this repository's git hooks."
+  ],
+  [
+   "VFY-SH-022",
+   "ask",
+   "\\bgit\\b[^\\n]*--(?:upload-pack|receive-pack)\\b|\\bgit\\s+submodule\\s+add\\b|\\bgit\\s+push\\s+(?:-\\S+\\s+)*(?:https?|ssh|git)://",
+   "",
+   "A git command that runs a program or talks to a new remote."
+  ],
+  [
+   "VFY-SH-028",
+   "ask",
+   "\\b(?:npm|yarn|pnpm)\\s+config\\s+set\\s+\\S*registry\\b|\\bpip[0-9.]*\\s+config\\s+set\\b|--trusted-host\\b|--script-shell\\b",
+   "",
+   "Changes where packages come from or what runs them."
+  ],
+  [
+   "VFY-SH-038",
+   "ask",
+   "\\b(?:sh|bash|zsh|python[0-9.]*|node|perl|ruby|php)\\s+(?:-\\S+\\s+)*/(?:tmp|var/tmp|dev/shm)/|\\bmake\\s+-f\\s+/(?:tmp|var/tmp|dev/shm)/",
+   "",
+   "Runs a program from a temporary folder."
+  ],
+  [
+   "VFY-SH-024",
+   "ask",
+   "\\bfsockopen\\b|\\bTCPSocket\\b|\\bsocket\\.socket\\b|-rsocket\\b",
+   "",
+   "Inline code that opens a network connection."
+  ],
+  [
+   "VFY-SH-015",
+   "ask",
+   "\\bcurl\\b[^\\n]*(?:--data-urlencode\\s+['\\\"]?\\S*@|\\s-K\\s|\\s--config\\s)|\\bwget\\b[^\\n]*\\s-i\\s",
+   "",
+   "Sends a local file, or reads its request from one."
+  ],
+  [
+   "VFY-SH-007",
+   "ask",
+   "\\b(?:locate|mlocate|plocate|fd)\\b[^\\n]*(?:\\bid_rsa\\b|\\bid_ed25519\\b|\\bcredentials\\b|\\.env\\b)",
+   "",
+   "Looks for a key or credentials file."
+  ],
+  [
+   "VFY-SH-027",
+   "ask",
+   "\\btailscale\\s+funnel\\b",
+   "",
+   "Opens a tunnel from the internet to this computer."
   ]
  ],
  "sql_patterns": [
@@ -366,6 +821,41 @@
    "\\b(?:grant|revoke|alter\\s+user|create\\s+user|drop\\s+user)\\b",
    "i",
    "Changes database users or permissions."
+  ],
+  [
+   "VFY-SQL-001",
+   "ask",
+   "\\bdelete\\s+from\\s+[\\w.\\\"`]+\\s+where\\s+(?:1\\s*=\\s*1|true|'[^']*'\\s*=\\s*'[^']*')\\s*(?:;|$)",
+   "i",
+   "DELETE with a WHERE that matches every row."
+  ],
+  [
+   "VFY-SQL-001",
+   "ask",
+   "\\balter\\s+table\\b[^;]*\\bdrop\\b",
+   "i",
+   "Removes part of a table."
+  ],
+  [
+   "VFY-SQL-003",
+   "deny",
+   "\\bcopy\\b[^;]*\\b(?:to|from)\\s+program\\b",
+   "i",
+   "Runs a command on the database server."
+  ],
+  [
+   "VFY-SQL-003",
+   "deny",
+   "\\binto\\s+(?:out|dump)file\\b|\\b(?:pg_read_file|pg_read_binary_file|pg_ls_dir|lo_import|lo_export|load_file|xp_cmdshell)\\b",
+   "i",
+   "Reads or writes files on the database server."
+  ],
+  [
+   "VFY-SQL-002",
+   "ask",
+   "\\bcreate\\s+extension\\b",
+   "i",
+   "Adds code to the database."
   ]
  ],
  "scan_text": [
@@ -459,6 +949,76 @@
    "\\b(?:otherwise|or\\s+else)\\b[^.]{0,40}\\b(?:will\\s+(?:not\\s+work|fail|break|crash)|won't\\s+work|stops?\\s+working)",
    "i",
    "Pressures the model with a warning that the tool will fail."
+  ],
+  [
+   "VFY-SCAN-001",
+   "critical",
+   "(?:проигнорируй|игнорируй|забудь)\\s+(?:все\\s+)?(?:предыдущие|прошлые|прежние)\\s+(?:инструкции|указания)",
+   "i",
+   "Tells the model to ignore its instructions."
+  ],
+  [
+   "VFY-SCAN-001",
+   "critical",
+   "ignora(?:r)?\\s+(?:todas\\s+)?(?:las\\s+)?instrucciones\\s+(?:anteriores|previas)",
+   "i",
+   "Tells the model to ignore its instructions."
+  ],
+  [
+   "VFY-SCAN-001",
+   "critical",
+   "ignore[zr]?\\s+(?:toutes\\s+)?(?:les\\s+)?instructions\\s+pr[ée]c[ée]dentes",
+   "i",
+   "Tells the model to ignore its instructions."
+  ],
+  [
+   "VFY-SCAN-001",
+   "critical",
+   "ignorier\\w*\\s+(?:alle\\s+)?(?:vorherigen|bisherigen)\\s+(?:anweisungen|instruktionen)",
+   "i",
+   "Tells the model to ignore its instructions."
+  ],
+  [
+   "VFY-SCAN-001",
+   "critical",
+   "忽略(?:之前|以上|先前|所有)的?(?:指令|指示|说明)",
+   "",
+   "Tells the model to ignore its instructions."
+  ],
+  [
+   "VFY-SCAN-004",
+   "critical",
+   "\\b(?:bcc|cc|forward|send|copy|mail)\\b[^.]{0,60}[\\w.+-]+@[\\w-]+\\.[a-z]{2,}",
+   "i",
+   "Sends something to a fixed email address."
+  ],
+  [
+   "VFY-SCAN-002",
+   "high",
+   "\\b(?:share|send|upload|post|forward)\\b[^.]{0,60}\\b(?:config(?:uration)?|credential|secret|env(?:ironment)?)s?\\b[^.]{0,30}\\b(?:with|to)\\b[^.]{0,40}\\b(?:endpoint|server|webhook|url|audit)\\b",
+   "i",
+   "Asks the model to send configuration or credentials somewhere."
+  ],
+  [
+   "VFY-SCAN-001",
+   "high",
+   "<!--[\\s\\S]*?-->",
+   "",
+   "Contains an HTML comment, which people do not see once it is rendered."
+  ],
+  [
+   "VFY-SCAN-002",
+   "high",
+   "!\\[[^\\]]*\\]\\(https?://[^)\\s]*[?&][^)\\s]*\\)",
+   "i",
+   "A markdown image with a query string can send data out when it is shown."
+  ],
+  [
+   "VFY-SCAN-002",
+   "critical",
+   "\\b(?:contains?|contents?\\s+of|value\\s+of)\\b[^.]{0,40}(?:~/\\.ssh|\\.ssh/|\\bid_rsa\\b|\\bid_ed25519\\b|\\.aws/credentials|\\.netrc\\b|(?:^|[\\s/'\"`(])\\.env\\b)",
+   "i",
+   "Asks for the contents of a sensitive file."
   ]
  ],
  "exfil_params": [
@@ -729,7 +1289,8 @@
  "sql_keys": [
   "sql",
   "query",
-  "statement"
+  "statement",
+  "q"
  ],
  "amount_keys": [
   "amount",

@@ -254,8 +254,39 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         if (!/\.type$/.test(pv[0]) && pv[0] !== "type") out.push(["inputSchema." + pv[0], pv[1]]);
       });
     }
-    if (isObj(tool.annotations) && typeof tool.annotations.title === "string") out.push(["annotations.title", tool.annotations.title]);
+    ["annotations", "outputSchema"].forEach(function (key) {
+      if (tool[key] !== undefined && tool[key] !== null) {
+        flattenStrings(tool[key]).forEach(function (pv) {
+          if (!/\.type$/.test(pv[0]) && pv[0] !== "type") out.push([key + "." + pv[0], pv[1]]);
+        });
+      }
+    });
     return out;
+  }
+
+  var LEET = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s" };
+  function isTag(cp) { return cp >= 0xE0020 && cp <= 0xE007E; }
+  // the same text with common disguises taken off: invisible characters, Unicode tags, leet, spaced letters, base64
+  function variants(text) {
+    var out = [], plain = "";
+    for (var ch of text) {
+      var cp = ch.codePointAt(0);
+      if (isTag(cp)) plain += String.fromCodePoint(cp - 0xE0000);
+      else if (!isInvisible(cp)) plain += ch;
+    }
+    if (plain !== text) out.push(plain);
+    out.push(plain.replace(/[013457@$]/g, function (c) { return LEET[c]; }));
+    var spaced = plain.replace(/(?<![A-Za-z])[A-Za-z](?: {1,2}[A-Za-z]){4,}(?![A-Za-z])/g, function (m) { return m.replace(/ {2}/g, "\u0000").replace(/ /g, "").replace(/\u0000/g, " "); });
+    if (spaced !== plain) out.push(spaced);
+    (plain.match(/[A-Za-z0-9+/]{24,}={0,2}/g) || []).forEach(function (blob) {
+      var bare = blob.replace(/=+$/, "");
+      if (bare.length % 4 === 1) return;
+      try {
+        var raw = atob(bare + "===".slice(0, (4 - bare.length % 4) % 4));
+        if (/^[\t\r\n\x20-\x7e]+$/.test(raw)) out.push(raw);
+      } catch (e) { /* not base64 */ }
+    });
+    return out.filter(function (v, i) { return v !== text && out.indexOf(v) === i; });
   }
 
   // "Do not include API keys" is the opposite of asking for them: a match right after a negation is skipped
@@ -281,9 +312,17 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       findings.push({ rule: rule, severity: severity, message: message, where: where });
     }
     var name = tool.name !== undefined ? tool.name : "";
+    if (typeof name === "string" && /[A-Za-z]/.test(name) && Array.from(name).some(function (c) { return c.codePointAt(0) > 127; })) {
+      add("VFY-SCAN-016", "high", "The tool name mixes Latin with look-alike letters from another script.", "name");
+    }
     texts(tool).forEach(function (wt) {
       var where = wt[0], text = wt[1];
       PATTERNS.scan_text.forEach(function (r) { if (affirmed(r[2], r[3], text)) add(r[0], r[1], r[4], where); });
+      variants(text).forEach(function (variant) {
+        PATTERNS.scan_text.forEach(function (r) {
+          if ((r[1] === "critical" || r[1] === "high") && affirmed(r[2], r[3], variant) && !affirmed(r[2], r[3], text)) add(r[0], r[1], r[4] + " It was disguised.", where);
+        });
+      });
       var bad = {};
       for (var ch of text) { var cp = ch.codePointAt(0); if (isInvisible(cp)) bad["U+" + cp.toString(16).toUpperCase().padStart(4, "0")] = 1; }
       var badList = Object.keys(bad).sort();
@@ -305,6 +344,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       var props = isObj(schema.properties) ? schema.properties : {};
       var required = Array.isArray(schema.required) ? schema.required : [];
       Object.keys(props).forEach(function (p) {
+        if (/ssh|private[_-]?key|seed[_-]?phrase|mnemonic|contents?[_-]of/i.test(p)) add("VFY-SCAN-017", "high", "The parameter name `" + p + "` asks for a key or the contents of a file.", "inputSchema.properties." + p);
         if (has(PATTERNS.exfil_params, p.toLowerCase()) && has(required, p)) add("VFY-SCAN-006", "medium", "Requires a free-form `" + p + "` parameter, a known side channel for leaking data.", "inputSchema.properties." + p);
       });
       if (has(capabilities(tool), "exec")) {
@@ -360,7 +400,11 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
 
   /* ============================================================ pre-check */
   var SHELLS = ["sh", "bash", "zsh", "dash", "ksh", "fish"];
-  var WRAPPERS = ["nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox"];
+  var WRAPPERS = ["nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox", "strace", "ltrace", "unshare", "setsid", "flock", "chroot", "parallel"];
+  var SHELL_WORDS = ["if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done", "case", "esac", "{", "}", "!", "coproc"];
+  var FIND_FILTERS = ["-name", "-iname", "-path", "-ipath", "-regex", "-iregex", "-newer", "-mtime", "-mmin", "-size"];
+  var BAD_SCHEMES = ["gopher", "dict", "ldap", "ldaps", "tftp", "netdoc", "jar"];
+  var PRIVATE_HOST = /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|169\.254\.|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/;
   var NETWORK_CMDS = ["curl", "wget", "nc", "ncat", "netcat", "scp", "rsync", "ftp", "sftp", "http", "https", "httpie", "telnet", "socat", "aria2c", "Invoke-WebRequest", "iwr", "irm"];
   var READERS = ["cat", "less", "more", "head", "tail", "base64", "xxd", "od", "strings", "grep", "egrep", "rg", "awk", "sed", "cut", "sort", "uniq", "tac", "nl", "bat", "jq", "gpg", "openssl", "cp", "scp", "rsync", "tar", "zip", "7z", "source", "."];
   var SYSTEM_DIRS = ["/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64", "/opt", "/proc", "/root", "/sbin", "/srv", "/sys", "/usr", "/var", "/System", "/Library", "/Applications", "/Users", "/private"];
@@ -464,7 +508,8 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     var opt;
     while (argv.length) {
       var a = argv[0];
-      if (ASSIGN.test(a)) { argv.shift(); continue; }
+      if (ASSIGN.test(a) || has(SHELL_WORDS, a)) { argv.shift(); continue; }
+      if (a === "function") { argv.splice(0, 2); continue; }
       var base = basename(a);
       if (base === "sudo" || base === "doas") {
         s.sudo = true; argv.shift();
@@ -484,7 +529,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         s.xargs = true; argv.shift();
         while (argv.length && argv[0].charAt(0) === "-") {
           opt = argv.shift();
-          if (has(["-I", "-n", "-P", "-d", "-L", "-s", "-E"], opt) && argv.length) argv.shift();
+          if (has(["-I", "-n", "-P", "-d", "-L", "-s", "-E", "-a"], opt) && argv.length) argv.shift();
         }
         continue;
       }
@@ -495,11 +540,13 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
           if (has(["-n", "-s", "-k", "-c"], opt) && argv.length) argv.shift();
         }
         if (base === "timeout" && argv.length && /^\d/.test(argv[0])) argv.shift();
+        if ((base === "flock" || base === "chroot") && argv.length) argv.shift();
+        if (base === "parallel") argv = argv.filter(function (x) { return x !== ":::"; });
         continue;
       }
       break;
     }
-    if (argv.length) { s.name = basename(argv[0]); s.args = argv.slice(1).map(homeArg); }
+    if (argv.length) { s.name = basename(argv[0]).replace(/\.exe$/, ""); s.args = argv.slice(1).map(homeArg); }
     s.out = s.out.map(function (x) { return typeof x === "string" ? homeArg(x) : x; });
     s.inp = s.inp.map(function (x) { return typeof x === "string" ? homeArg(x) : x; });
     return s;
@@ -519,7 +566,17 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         var k = s.args.indexOf("-c");
         if (k + 1 < s.args.length) inner = s.args[k + 1];
       } else if (s.name === "eval" && s.args.length) inner = s.args.join(" ");
-      else if (s.name === "ssh") {
+      else if (s.name === "alias") inner = s.args.filter(function (x) { return x.indexOf("=") >= 0; }).map(function (x) { return x.slice(x.indexOf("=") + 1); }).join(" ");
+      else if ((s.name === "script" || s.name === "su") && has(s.args, "-c")) {
+        var kc = s.args.indexOf("-c");
+        if (kc + 1 < s.args.length) inner = s.args[kc + 1];
+      } else if (s.name === "find") inner = findExec(s.args);
+      else if (has(["powershell", "pwsh", "cmd"], s.name.toLowerCase().replace(/\.exe$/, ""))) {
+        var low = s.args.map(function (x) { return x.toLowerCase(); });
+        var kp = -1;
+        ["-c", "-command", "/c", "/k"].forEach(function (f) { if (kp < 0 && has(low, f)) kp = low.indexOf(f); });
+        if (kp >= 0 && kp + 1 < s.args.length) inner = s.args.slice(kp + 1).join(" ");
+      } else if (s.name === "ssh") {
         var ops = [], skip = false;
         s.args.forEach(function (a) {
           if (skip) { skip = false; return; }
@@ -537,6 +594,66 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         }
       });
     });
+    return out;
+  }
+
+  // what `find -exec` runs, with {} as the folder it starts from, unless that would make a narrow delete look wide
+  function findExec(args) {
+    var root = args.filter(function (x) { return x.charAt(0) !== "-"; })[0];
+    if (root === undefined) root = ".";
+    var flags = ["-exec", "-execdir", "-ok", "-okdir"];
+    for (var i = 0; i < flags.length; i++) {
+      if (!has(args, flags[i])) continue;
+      var body = [], rest = args.slice(args.indexOf(flags[i]) + 1);
+      for (var j = 0; j < rest.length; j++) {
+        if (rest[j] === ";" || rest[j] === "+") break;
+        body.push(rest[j] === "{}" && body[0] !== "rm" ? root : rest[j]);
+      }
+      return body.length ? commandString(body) : null;
+    }
+    return null;
+  }
+
+  function findNarrow(args) {
+    return args.some(function (x, i) { return has(FIND_FILTERS, x) && i + 1 < args.length && args[i + 1] !== "*" && args[i + 1] !== "*.*"; });
+  }
+
+  function braces(word) {
+    var m = /\{([^{}]*,[^{}]*)\}/.exec(word);
+    if (!m) return [word];
+    return m[1].split(",").map(function (x) { return word.slice(0, m.index) + x + word.slice(m.index + m[0].length); });
+  }
+
+  // everything in a command that looks like a path, however it got there: a variable, $(...), a loop, a Windows path
+  function named(cmd, segs) {
+    var found = cmd.match(/[^\s'"`;|&()<>=,]+/g) || [];
+    segs.forEach(function (s) {
+      s.args.concat(s.inp, s.out).forEach(function (t) {
+        if (typeof t === "string") found = found.concat(t.split("="));
+      });
+      if (s.name === "find") { // `find ~ -name id_rsa` names that file
+        var root = s.args.filter(function (x) { return x.charAt(0) !== "-"; })[0];
+        if (root === undefined) root = ".";
+        s.args.slice(0, -1).forEach(function (x, i) { if (x === "-name" || x === "-iname") found.push(root + "/" + s.args[i + 1]); });
+      }
+    });
+    var out = [];
+    found.forEach(function (w) {
+      braces(w).forEach(function (x) {
+        var h = homeVars(x.replace(/\\/g, "/")).split("$")[0].split("`")[0];
+        if (h.indexOf("://") < 0 && h && (h.charAt(0) === "~" || h.charAt(0) === "/" || h.indexOf("/") >= 0) && out.indexOf(h) < 0) out.push(h);
+      });
+    });
+    return out;
+  }
+
+  // the command with a=x put in where $a is used, so that a value in a variable is still seen
+  function substituted(cmd) {
+    var out = cmd, re = /(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|)]+)/g, m;
+    while ((m = re.exec(cmd)) !== null) {
+      var value = m[2].replace(/^['"]+|['"]+$/g, "");
+      out = out.replace(new RegExp("\\$(?:" + m[1] + "\\b|\\{" + m[1] + "\\})", "g"), function () { return value; });
+    }
     return out;
   }
 
@@ -626,7 +743,12 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
   Ctx.prototype.sensitive = function (path) {
     var base = basename(path);
     if (EXAMPLE_SUFFIXES.some(function (s) { return base.slice(-s.length) === s; })) return null;
-    return this.match(this.p.files.sensitive, path);
+    // never by case: macOS and Windows ignore it, so ~/.AWS is ~/.aws there
+    var low = path.toLowerCase(), home = this.home.toLowerCase(), list = this.p.files.sensitive;
+    for (var i = 0; i < list.length; i++) {
+      if (firstMatch([toPosix(list[i]).toLowerCase()], low, home) !== null) return list[i];
+    }
+    return null;
   };
   Ctx.prototype.protected_ = function (path) { return this.match(this.p.files.deny_write, path); };
   Ctx.prototype.guardsVerfy = function (path) {
@@ -652,7 +774,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
 
   var SECRET_MSG = " With them an agent can sign its own receipts or upload as this device. Run it yourself if you meant it.";
   // $HOME/x, %USERPROFILE%\x and the like as ~/x, so they resolve like ~
-  function homeVars(p) { return p.replace(/^(?:\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE|\$env:HOME)(?=$|[\\/])/i, "~"); }
+  function homeVars(p) { return p.replace(/^(?:\$HOME|\$\{HOME\}|\$USERPROFILE|\$\{USERPROFILE\}|%USERPROFILE%|%HOMEPATH%|%HOME%|\$env:USERPROFILE|\$env:HOME|\$env:HOMEPATH|\$\{env:USERPROFILE\})(?=$|[\\/])/i, "~"); }
   // `$HOME/x` in a command, also after `if=`, so that a path check cannot be walked around by spelling home differently
   function homeArg(p) {
     var m = /^((?:if|of)=)(.*)$/.exec(p);
@@ -706,6 +828,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       if (w[0] === "lock" && w[1] === "files" && has(a, "--update")) return F("VFY-SELF-003", "deny", "`verfy lock files --update` approves changed instruction files for the agent. A person has to review and run it.");
       if (w[0] === "import" && has(a, "--save")) return F("VFY-SELF-003", "deny", "`verfy import --save` changes which tools the Verfy gateway blocks. A person has to review and run it.");
       if (w[0] === "policy" && w[1] === "use") return F("VFY-SELF-003", "deny", "`verfy policy use` replaces the policy Verfy enforces. A person has to choose and run it.");
+      if (w[0] === "policy" && w[1] === "trust") return F("VFY-SELF-003", "deny", "`verfy policy trust` lets this folder's policy weaken Verfy. A person has to read it and run this.");
       if (w[0] === "init" && has(a, "--force")) return F("VFY-SELF-003", "deny", "`verfy init --force` replaces the signing key, which starts a new receipt chain.");
       // --url as well as --code: with only --url, the code can come from VERFY_ENROLL_CODE
       if ((w[0] === "team" && w[1] === "enroll") || (w[0] === "init" && a.some(function (x) { var f = x.split("=")[0]; return f === "--url" || f === "--code"; })))
@@ -755,6 +878,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     if (!parts) return out;
     var host = parts.host, userinfo = parts.userinfo, rest = parts.rest;
     var net = ctx.p.network, denied = false;
+    var scheme = url.split(":")[0].toLowerCase();
+    if (has(BAD_SCHEMES, scheme)) out.push(F("VFY-NET-001", "deny", "`" + scheme + ":` URLs are a way to reach internal services."));
+    if (/(?:^|[.-])169[.-]254[.-]169[.-]254(?:[.-]|$)/.test(host) && host !== "169.254.169.254") out.push(F("VFY-NET-001", "deny", "`" + host + "` points at the cloud metadata address."));
+    if (PRIVATE_HOST.test(host) && !net.allow.some(function (p) { return hostMatch(p, host); })) out.push(F("VFY-NET-004", "ask", "`" + host + "` is an address on a private network."));
     for (var i = 0; i < net.deny.length; i++) {
       if (hostMatch(net.deny[i], host)) { out.push(F("VFY-NET-001", "deny", "`" + host + "` is on the network deny list (`" + net.deny[i] + "`).")); denied = true; break; }
     }
@@ -833,7 +960,8 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     return null;
   }
 
-  function checkShell(cmd, ctx) {
+  function checkShell(cmd, ctx, again) {
+    if (again === undefined) again = true;
     var out = [], segs = parseShell(cmd), cwd = ctx.ws;
     var network = segs.some(function (s) { return has(NETWORK_CMDS, s.name); });
     var sensitiveReads = [], envDumped = false;
@@ -862,6 +990,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         if (!fo.length) fo = ["."];
         p = here !== null ? ctx.path(fo[0], here) : null;
         if (p === null) out.push(F("VFY-SH-002", "ask", "`find -delete` after changing to an unknown folder."));
+        else if (p === ctx.ws && !findNarrow(a)) out.push(F("VFY-SH-002", "ask", "`find " + fo[0] + "` deletes everything in the project."));
         else if (ctx.catastrophic(p) && p !== ctx.ws) out.push(F("VFY-SH-001", "deny", "`find " + fo[0] + " -delete` can wipe the system or home folder."));
         else if (!isWithin(p, ctx.ws) && !ctx.allowedOutside(p)) out.push(F("VFY-SH-002", "ask", "`find " + fo[0] + " -delete` deletes files outside the project."));
       }
@@ -910,6 +1039,13 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       if (network) out.push(F("VFY-SH-008", "deny", "Reads the sensitive file " + p + " in a command that also uses the network."));
       else out.push(F("VFY-SH-007", "ask", "Reads the sensitive file " + p + "."));
     });
+    if (!sensitiveReads.length) {
+      var names = named(cmd, segs);
+      for (var ni = 0; ni < names.length; ni++) {
+        var nabs = ctx.path(names[ni]);
+        if (ctx.sensitive(nabs) || ctx.sensitive(nabs + "/x")) { out.push(F("VFY-SH-007", "ask", "Names the sensitive path " + names[ni] + ".")); break; }
+      }
+    }
     if (envDumped) {
       if (network) out.push(F("VFY-SH-008", "deny", "Prints environment variables in a command that also uses the network."));
       else out.push(F("VFY-SH-007", "ask", "Prints environment variables, which often hold secrets."));
@@ -919,6 +1055,12 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       if (rx(r[2], r[3]).test(cmd)) out.push(F(r[0], r[1], r[4]));
     });
     if (network) urls(cmd).forEach(function (u) { out = out.concat(checkUrl(u, ctx)); });
+    var plain = substituted(cmd);
+    if (again && plain !== cmd) {
+      var more = checkShell(plain, ctx, false);
+      out = out.concat(more[0]);
+      network = network || more[1];
+    }
     return [out, network];
   }
 
@@ -956,7 +1098,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     if (execName && Array.isArray(keys.args) && commandString(keys.args) !== null) return "shell";
     for (i = 0; i < PATTERNS.sql_keys.length; i++) {
       var sk = PATTERNS.sql_keys[i];
-      if (typeof keys[sk] === "string" && /^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert)\b/i.test(keys[sk])) return "sql";
+      if (typeof keys[sk] === "string" && /^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert|copy|call|exec|execute)\b/i.test(sqlText(keys[sk]))) return "sql";
     }
     var hasAmount = PATTERNS.amount_keys.some(function (ak) { return num(keys[ak]) !== null && keys[ak] !== undefined; });
     if (hasAmount && (intersects(w, setOf(verbs.payment)) || "currency" in keys || intersects(w, setOf(PATTERNS.capabilities.payment.name)))) return "payment";
@@ -975,6 +1117,9 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     return "other";
   }
   // the path in a file: URL: a tool that takes `uri` reads the same file as one that takes `path`
+  // SQL without comments, which can sit in the middle of a keyword's spacing
+  function sqlText(sql) { return sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " "); }
+
   function fileUrl(v) {
     if (typeof v !== "string" || v.slice(0, 5).toLowerCase() !== "file:") return null;
     var p = v.replace(/^file:(?:\/\/[^\/]*)?/i, "");
@@ -1071,7 +1216,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
         touchy = pushes(cmdText) || res[0].some(function (f) { return f.rule === "VFY-SH-007" || f.rule === "VFY-SH-008"; });
       } else if (kind === "sql") {
         var qk = argKeys.filter(function (k) { return has(PATTERNS.sql_keys, k.toLowerCase()) && typeof args[k] === "string"; })[0];
-        PATTERNS.sql_patterns.forEach(function (r) { if (rx(r[2], r[3]).test(args[qk])) out.push(F(r[0], r[1], r[4])); });
+        PATTERNS.sql_patterns.forEach(function (r) { if (rx(r[2], r[3]).test(sqlText(args[qk]))) out.push(F(r[0], r[1], r[4])); });
       } else if (kind.indexOf("file_") === 0) {
         pathsOf(args).forEach(function (kp) {
           var key = kp[0], p = kp[1], abs = ctx.path(p), h;
@@ -1102,6 +1247,19 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
           }
         });
       } else if (kind === "payment") out = out.concat(checkPayment(args, pol, context));
+      if (kind !== "shell") {
+        // a path under any key, also nested: a tool may call it `location` or `options.path`
+        var covered = kind.indexOf("file_") === 0 ? pathsOf(args).map(function (kp) { return kp[1]; }) : [];
+        flattenStrings(args).forEach(function (pt) {
+          var text = pt[1];
+          if (has(covered, text) || Array.from(text).length > 1024 || text.indexOf("\n") >= 0 || has(CONTENT_KEYS, pt[0].split(/[.\[]/)[0].toLowerCase())) return;
+          var h = fileUrl(text) || homeVars(text.replace(/\\/g, "/"));
+          if (/^(?:~|\/|\.\.?\/|[A-Za-z]:\/)/.test(h)) {
+            var nh = ctx.sensitive(ctx.path(h));
+            if (nh) { out.push(F("VFY-FS-003", "ask", "Names the sensitive file " + text + " (`" + nh + "`).")); touchy = true; }
+          }
+        });
+      }
       var urls = argKeys.filter(function (k) { return has(PATTERNS.url_keys, k.toLowerCase()) && typeof args[k] === "string"; }).map(function (k) { return args[k]; });
       if (kind === "network" || kind === "message") {
         urls.forEach(function (u) { out = out.concat(checkUrl(u, ctx)); });
@@ -1130,7 +1288,8 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     var disabled = setOf(pol.disabled_rules || []), seen = {}, findings = [];
     out.forEach(function (f) {
       var key = f.rule + "\u0000" + f.message;
-      if (disabled[f.rule] || seen[key]) return;
+      // what guards Verfy itself cannot be listed away
+      if ((disabled[f.rule] && f.rule.indexOf("VFY-SELF-") !== 0) || seen[key]) return;
       seen[key] = true;
       findings.push(f);
     });

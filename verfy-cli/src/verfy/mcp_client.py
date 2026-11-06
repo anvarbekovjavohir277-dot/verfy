@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Callable, Iterator, Mapping
+from .scanner import prompt_tool
 
 PROTOCOL = "2025-06-18"
 MAX_BODY = 16 * 1024 * 1024
@@ -237,7 +238,25 @@ def _handshake(call: Callable[[int, str, dict], dict], initialized: Callable[[],
         mid += 1
         if not cursor or mid > 100:
             break
+    if isinstance(init.get("capabilities"), dict) and "prompts" in init["capabilities"]:
+        tools.extend(_prompts(lambda method, params: call(mid + 1, method, params)))
     return {"server": init.get("serverInfo", {}), "tools": tools}
+
+
+def _prompts(ask: Callable[[str, dict], dict]) -> list[dict]:
+    """A server's prompts as lock entries. One that will not list them just has none to pin."""
+    out: list[dict] = []
+    cursor = None
+    try:
+        for _ in range(100):
+            res = ask("prompts/list", {"cursor": cursor} if cursor else {})
+            out.extend(prompt_tool(p) for p in res.get("prompts") or [] if isinstance(p, dict) and isinstance(p.get("name"), str))
+            cursor = res.get("nextCursor")
+            if not cursor:
+                break
+    except MCPError:
+        return []
+    return out
 
 
 def list_tools_http(url: str, headers: Mapping[str, str] | None = None, timeout: float = 30.0) -> dict:
@@ -330,6 +349,14 @@ def list_tools(command: list[str], timeout: float = 30.0, env: dict | None = Non
             mid += 1
             if not cursor or mid > 100:
                 break
+        if isinstance(init.get("capabilities"), dict) and "prompts" in init["capabilities"]:
+            ids = iter(range(mid, mid + 200))
+
+            def ask(method: str, params: dict) -> dict:
+                n = next(ids)
+                send({"jsonrpc": "2.0", "id": n, "method": method, "params": params})
+                return wait_for(n)
+            tools.extend(_prompts(ask))
         return {"server": init.get("serverInfo", {}), "tools": tools}
     finally:
         try:

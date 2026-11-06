@@ -9,6 +9,8 @@ capabilities and a ``sha256`` pin of its definition.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from typing import Any
 
@@ -60,6 +62,17 @@ def tool_pin(tool: dict) -> str:
     })
 
 
+def prompt_tool(prompt: dict) -> dict:
+    """An MCP prompt as a lock entry, `prompt:<name>`. A client shows it to the model just as it shows a tool."""
+    args = [a for a in prompt.get("arguments") or [] if isinstance(a, dict) and isinstance(a.get("name"), str)]
+    return {
+        "name": "prompt:" + str(prompt.get("name", "")),
+        "description": prompt.get("description", "") or "",
+        "inputSchema": {"type": "object", "properties": {a["name"]: {"type": "string", "description": a.get("description", "") or ""} for a in args},
+                        "required": [a["name"] for a in args if a.get("required") is True]},
+    }
+
+
 def capabilities(tool: dict) -> list[str]:
     name_words = set(words(tool.get("name", "")))
     joined = "_".join(words(tool.get("name", "")))
@@ -83,10 +96,34 @@ def _texts(tool: dict) -> list[tuple[str, str]]:
             out.append((key, tool[key]))
     if tool.get("inputSchema") is not None:
         out.extend(("inputSchema." + p, s) for p, s in flatten_strings(tool["inputSchema"]) if not p.endswith(".type") and p != "type")
-    ann = tool.get("annotations")
-    if isinstance(ann, dict) and isinstance(ann.get("title"), str):
-        out.append(("annotations.title", ann["title"]))
+    for key in ("annotations", "outputSchema"):
+        if tool.get(key) is not None:
+            out.extend((key + "." + p, s) for p, s in flatten_strings(tool[key]) if not p.endswith(".type") and p != "type")
     return out
+
+
+LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"})
+PLAIN_ASCII = re.compile(r"^[\t\r\n\x20-\x7e]+$")
+
+
+def _variants(text: str) -> list[str]:
+    """The same text with common disguises taken off: invisible characters, Unicode tags, leet, spaced letters, base64."""
+    out = []
+    plain = "".join(chr(ord(c) - 0xE0000) if 0xE0020 <= ord(c) <= 0xE007E else c for c in text if not is_invisible(ord(c)) or 0xE0020 <= ord(c) <= 0xE007E)
+    if plain != text:
+        out.append(plain)
+    out.append(plain.translate(LEET))
+    spaced = re.sub(r"(?<![A-Za-z])[A-Za-z](?: {1,2}[A-Za-z]){4,}(?![A-Za-z])", lambda m: m.group(0).replace("  ", "\0").replace(" ", "").replace("\0", " "), plain)
+    if spaced != plain:
+        out.append(spaced)
+    for blob in re.findall(r"[A-Za-z0-9+/]{24,}={0,2}", plain):
+        try:
+            raw = base64.b64decode(blob + "=" * (-len(blob) % 4), validate=True).decode("ascii")
+        except (binascii.Error, ValueError):
+            continue
+        if PLAIN_ASCII.match(raw):
+            out.append(raw)
+    return [v for v in dict.fromkeys(out) if v != text]
 
 
 # "Do not include API keys" is the opposite of asking for them: a match right after a negation is skipped
@@ -107,6 +144,10 @@ def text_findings(text: str, where: str = "") -> list[dict]:
     for rule, sev, pat, flags, msg in PATTERNS["scan_text"]:
         if _affirmed(rx(pat, flags), text):
             out.append({"rule": rule, "severity": sev, "message": msg, "where": where})
+    for variant in _variants(text):
+        for rule, sev, pat, flags, msg in PATTERNS["scan_text"]:
+            if sev in ("critical", "high") and _affirmed(rx(pat, flags), variant) and not _affirmed(rx(pat, flags), text):
+                out.append({"rule": rule, "severity": sev, "message": msg + " It was disguised.", "where": where})
     bad = sorted({f"U+{ord(ch):04X}" for ch in text if is_invisible(ord(ch))})
     if bad:
         out.append({"rule": "VFY-SCAN-003", "severity": "high", "message": "Contains invisible characters (" + ", ".join(bad[:4]) + ") that can hide text from people.", "where": where})
@@ -130,6 +171,8 @@ def scan_tool(tool: dict, all_names: list[str] | None = None, pins: dict | None 
 
     name = tool.get("name", "")
     texts = _texts(tool)
+    if isinstance(name, str) and re.search(r"[A-Za-z]", name) and any(ord(c) > 127 for c in name):
+        add("VFY-SCAN-016", "high", "The tool name mixes Latin with look-alike letters from another script.", "name")
 
     for where, text in texts:
         for f in text_findings(text, where):
@@ -151,6 +194,8 @@ def scan_tool(tool: dict, all_names: list[str] | None = None, pins: dict | None 
         props = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
         required = schema.get("required") if isinstance(schema.get("required"), list) else []
         for p in props:
+            if re.search(r"ssh|private[_-]?key|seed[_-]?phrase|mnemonic|contents?[_-]of", str(p), re.I):
+                add("VFY-SCAN-017", "high", f"The parameter name `{p}` asks for a key or the contents of a file.", f"inputSchema.properties.{p}")
             if str(p).lower() in PATTERNS["exfil_params"] and p in required:
                 add("VFY-SCAN-006", "medium", f"Requires a free-form `{p}` parameter, a known side channel for leaking data.", f"inputSchema.properties.{p}")
         caps_now = capabilities(tool)

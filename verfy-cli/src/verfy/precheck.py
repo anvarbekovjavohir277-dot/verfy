@@ -25,7 +25,12 @@ from .policy import DEFAULT_POLICY, load_policy
 VERSION = "verfy.check/1"
 
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
-WRAPPERS = {"nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox"}
+WRAPPERS = {"nohup", "time", "command", "builtin", "exec", "nice", "ionice", "stdbuf", "timeout", "watch", "caffeinate", "busybox", "toybox",
+            "strace", "ltrace", "unshare", "setsid", "flock", "chroot", "parallel"}
+SHELL_WORDS = {"if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done", "case", "esac", "{", "}", "!", "coproc"}
+FIND_FILTERS = ("-name", "-iname", "-path", "-ipath", "-regex", "-iregex", "-newer", "-mtime", "-mmin", "-size")
+BAD_SCHEMES = ("gopher", "dict", "ldap", "ldaps", "tftp", "netdoc", "jar")
+PRIVATE_HOST = r"^(?:10\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|169\.254\.|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)"
 NETWORK_CMDS = {"curl", "wget", "nc", "ncat", "netcat", "scp", "rsync", "ftp", "sftp", "http", "https", "httpie", "telnet", "socat", "aria2c", "Invoke-WebRequest", "iwr", "irm"}
 READERS = {"cat", "less", "more", "head", "tail", "base64", "xxd", "od", "strings", "grep", "egrep", "rg", "awk", "sed", "cut", "sort", "uniq", "tac", "nl", "bat", "jq", "gpg", "openssl", "cp", "scp", "rsync", "tar", "zip", "7z", "source", "."}
 SYSTEM_DIRS = {"/bin", "/boot", "/dev", "/etc", "/home", "/lib", "/lib64", "/opt", "/proc", "/root", "/sbin", "/srv", "/sys", "/usr", "/var", "/System", "/Library", "/Applications", "/Users", "/private"}
@@ -208,8 +213,11 @@ def _normalize(seg: dict) -> dict:
     s = {"name": "", "args": [], "out": seg["out"], "inp": seg["inp"], "pipe": seg["pipe"], "sudo": False, "xargs": False}
     while argv:
         a = argv[0]
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", a):
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", a) or a in SHELL_WORDS:
             argv.pop(0)
+            continue
+        if a == "function":
+            del argv[:2]
             continue
         base = a.rsplit("/", 1)[-1]
         if base in ("sudo", "doas"):
@@ -233,7 +241,7 @@ def _normalize(seg: dict) -> dict:
             argv.pop(0)
             while argv and argv[0].startswith("-"):
                 opt = argv.pop(0)
-                if opt in ("-I", "-n", "-P", "-d", "-L", "-s", "-E") and argv:
+                if opt in ("-I", "-n", "-P", "-d", "-L", "-s", "-E", "-a") and argv:
                     argv.pop(0)
             continue
         if base in WRAPPERS:
@@ -244,10 +252,14 @@ def _normalize(seg: dict) -> dict:
                     argv.pop(0)
             if base == "timeout" and argv and re.match(r"^\d", argv[0]):
                 argv.pop(0)
+            if base in ("flock", "chroot") and argv:
+                argv.pop(0)
+            if base == "parallel":
+                argv = [x for x in argv if x != ":::"]
             continue
         break
     if argv:
-        s["name"] = argv[0].rsplit("/", 1)[-1]
+        s["name"] = argv[0].rsplit("/", 1)[-1].removesuffix(".exe")
         s["args"] = [_home_arg(x) for x in argv[1:]]
     s["out"] = [_home_arg(x) if isinstance(x, str) else x for x in s["out"]]
     s["inp"] = [_home_arg(x) if isinstance(x, str) else x for x in s["inp"]]
@@ -269,6 +281,19 @@ def parse_shell(cmd: str, depth: int = 0) -> list[dict]:
                 inner = s["args"][k + 1]
         elif s["name"] == "eval" and s["args"]:
             inner = " ".join(s["args"])
+        elif s["name"] == "alias":
+            inner = " ".join(x.split("=", 1)[1] for x in s["args"] if "=" in x)
+        elif s["name"] in ("script", "su") and "-c" in s["args"]:
+            k = s["args"].index("-c")
+            if k + 1 < len(s["args"]):
+                inner = s["args"][k + 1]
+        elif s["name"] == "find":
+            inner = _find_exec(s["args"])
+        elif s["name"].lower().removesuffix(".exe") in ("powershell", "pwsh", "cmd"):
+            low = [x.lower() for x in s["args"]]
+            k = next((low.index(f) for f in ("-c", "-command", "/c", "/k") if f in low), None)
+            if k is not None and k + 1 < len(s["args"]):
+                inner = " ".join(s["args"][k + 1:])
         elif s["name"] == "ssh":
             ops = []
             skip = False
@@ -291,6 +316,57 @@ def parse_shell(cmd: str, depth: int = 0) -> list[dict]:
                 body = m.group(1) if m.group(1) is not None else m.group(2)
                 if body and body.strip():
                     out.extend(parse_shell(body, depth + 1))
+    return out
+
+
+def _find_exec(args: list[str]) -> str | None:
+    """What `find -exec` runs, with `{}` as the folder it starts from, unless that would make a narrow delete look wide."""
+    root = next((x for x in args if not x.startswith("-")), ".")
+    for flag in ("-exec", "-execdir", "-ok", "-okdir"):
+        if flag in args:
+            body: list[str] = []
+            for x in args[args.index(flag) + 1:]:
+                if x in (";", "+"):
+                    break
+                body.append(root if x == "{}" and body[:1] != ["rm"] else x)
+            return _command_string(body) if body else None
+    return None
+
+
+def _find_narrow(args: list[str]) -> bool:
+    return any(x in FIND_FILTERS and i + 1 < len(args) and args[i + 1] not in ("*", "*.*") for i, x in enumerate(args))
+
+
+def _braces(word: str) -> list[str]:
+    m = re.search(r"\{([^{}]*,[^{}]*)\}", word)
+    return [word[:m.start()] + x + word[m.end():] for x in m.group(1).split(",")] if m else [word]
+
+
+def _named(cmd: str, segs: list[dict]) -> list[str]:
+    """Everything in a command that looks like a path, however it got there: a variable, `$(...)`, a loop, a Windows path."""
+    found = re.findall(r"[^\s'\"`;|&()<>=,]+", cmd)
+    for s in segs:
+        for t in [*s["args"], *s["inp"], *s["out"]]:
+            if isinstance(t, str):
+                found.extend(t.split("="))
+        if s["name"] == "find":  # `find ~ -name id_rsa` names that file
+            root = next((x for x in s["args"] if not x.startswith("-")), ".")
+            found.extend(f"{root}/{s['args'][i + 1]}" for i, x in enumerate(s["args"][:-1]) if x in ("-name", "-iname"))
+    out: list[str] = []
+    for w in found:
+        for x in _braces(w):
+            h = _home_vars(x.replace("\\", "/")).split("$")[0].split("`")[0]
+            if "://" not in h and h and (h[0] in "~/" or "/" in h) and h not in out:
+                out.append(h)
+    return out
+
+
+def _substituted(cmd: str) -> str:
+    """The command with `a=x` put in where `$a` is used, so that a value in a variable is still seen."""
+    out = cmd
+    for m in re.finditer(r"(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=([^\s;&|)]+)", cmd):
+        value = m.group(2).strip("'\"")
+        out = re.sub(r"\$(?:" + m.group(1) + r"\b|\{" + m.group(1) + r"\})", lambda _: value, out)
     return out
 
 
@@ -414,7 +490,12 @@ class _Ctx:
         base = path.rsplit("/", 1)[-1]
         if base.endswith(EXAMPLE_SUFFIXES):
             return None
-        return self.match(self.p["files"]["sensitive"], path)
+        # never by case: macOS and Windows ignore it, so ~/.AWS is ~/.aws there
+        low, home = path.lower(), self.home.lower()
+        for pat in self.p["files"]["sensitive"]:
+            if first_match([to_posix(pat).lower()], low, home):
+                return pat
+        return None
 
     def protected(self, path: str) -> str | None:
         return self.match(self.p["files"]["deny_write"], path)
@@ -450,7 +531,7 @@ SECRET_MSG = " With them an agent can sign its own receipts or upload as this de
 
 def _home_vars(p: str) -> str:
     """``$HOME/x``, ``%USERPROFILE%\\x`` and the like as ``~/x``, so they resolve like ``~``."""
-    return re.sub(r"^(?:\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE|\$env:HOME)(?=$|[\\/])", "~", p, flags=re.I)
+    return re.sub(r"^(?:\$HOME|\$\{HOME\}|\$USERPROFILE|\$\{USERPROFILE\}|%USERPROFILE%|%HOMEPATH%|%HOME%|\$env:USERPROFILE|\$env:HOME|\$env:HOMEPATH|\$\{env:USERPROFILE\})(?=$|[\\/])", "~", p, flags=re.I)
 
 
 def _home_arg(p: str) -> str:
@@ -515,6 +596,8 @@ def _verfy_command(s: dict) -> dict | None:
             return _f("VFY-SELF-003", "deny", "`verfy import --save` changes which tools the Verfy gateway blocks. A person has to review and run it.")
         if words_[:2] == ["policy", "use"]:
             return _f("VFY-SELF-003", "deny", "`verfy policy use` replaces the policy Verfy enforces. A person has to choose and run it.")
+        if words_[:2] == ["policy", "trust"]:
+            return _f("VFY-SELF-003", "deny", "`verfy policy trust` lets this folder's policy weaken Verfy. A person has to read it and run this.")
         if words_[:1] == ["init"] and "--force" in a:
             return _f("VFY-SELF-003", "deny", "`verfy init --force` replaces the signing key, which starts a new receipt chain.")
         # --url as well as --code: with only --url, the code can come from VERFY_ENROLL_CODE
@@ -577,6 +660,12 @@ def check_url(url: str, ctx: _Ctx) -> list[dict]:
         return out
     host, userinfo, rest = parts
     net = ctx.p["network"]
+    if url.split(":", 1)[0].lower() in BAD_SCHEMES:
+        out.append(_f("VFY-NET-001", "deny", f"`{url.split(':', 1)[0].lower()}:` URLs are a way to reach internal services."))
+    if re.search(r"(?:^|[.-])169[.-]254[.-]169[.-]254(?:[.-]|$)", host) and host != "169.254.169.254":
+        out.append(_f("VFY-NET-001", "deny", f"`{host}` points at the cloud metadata address."))
+    if re.match(PRIVATE_HOST, host) and not any(host_match(pat, host) for pat in net["allow"]):
+        out.append(_f("VFY-NET-004", "ask", f"`{host}` is an address on a private network."))
     for pat in net["deny"]:
         if host_match(pat, host):
             out.append(_f("VFY-NET-001", "deny", f"`{host}` is on the network deny list (`{pat}`)."))
@@ -681,7 +770,7 @@ def _publish(s: dict) -> str | None:
     return None
 
 
-def check_shell(cmd: str, ctx: _Ctx) -> tuple[list[dict], bool]:
+def check_shell(cmd: str, ctx: _Ctx, again: bool = True) -> tuple[list[dict], bool]:
     """Findings for one shell command, plus whether it touches the network."""
     out: list[dict] = []
     segs = parse_shell(cmd)
@@ -719,6 +808,8 @@ def check_shell(cmd: str, ctx: _Ctx) -> tuple[list[dict], bool]:
             p = ctx.path(ops[0], here) if here is not None else None
             if p is None:
                 out.append(_f("VFY-SH-002", "ask", "`find -delete` after changing to an unknown folder."))
+            elif p == ctx.ws and not _find_narrow(a):
+                out.append(_f("VFY-SH-002", "ask", f"`find {ops[0]}` deletes everything in the project."))
             elif ctx.catastrophic(p) and p != ctx.ws:
                 out.append(_f("VFY-SH-001", "deny", f"`find {ops[0]} -delete` can wipe the system or home folder."))
             elif not is_within(p, ctx.ws) and not ctx.allowed_outside(p):
@@ -783,6 +874,12 @@ def check_shell(cmd: str, ctx: _Ctx) -> tuple[list[dict], bool]:
             out.append(_f("VFY-SH-008", "deny", f"Reads the sensitive file {p} in a command that also uses the network."))
         else:
             out.append(_f("VFY-SH-007", "ask", f"Reads the sensitive file {p}."))
+    if not sensitive_reads:
+        for p in _named(cmd, segs):
+            abs_ = ctx.path(p)
+            if ctx.sensitive(abs_) or ctx.sensitive(abs_ + "/x"):
+                out.append(_f("VFY-SH-007", "ask", f"Names the sensitive path {p}."))
+                break
     if env_dumped:
         if network:
             out.append(_f("VFY-SH-008", "deny", "Prints environment variables in a command that also uses the network."))
@@ -797,6 +894,11 @@ def check_shell(cmd: str, ctx: _Ctx) -> tuple[list[dict], bool]:
     if network:
         for u in _urls(cmd):
             out.extend(check_url(u, ctx))
+    plain = _substituted(cmd)
+    if again and plain != cmd:
+        more, net = check_shell(plain, ctx, False)
+        out.extend(more)
+        network = network or net
     return out, network
 
 
@@ -834,7 +936,7 @@ def classify(tool: str, args: dict) -> str:
     if w & exec_words and isinstance(keys.get("args"), list) and _command_string(keys["args"]) is not None:
         return "shell"  # run_shell {"args": ["rm", "-rf", "~"]}
     for k in PATTERNS["sql_keys"]:
-        if isinstance(keys.get(k), str) and re.match(r"^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert)\b", keys[k], re.I):
+        if isinstance(keys.get(k), str) and re.match(r"^\s*(?:select|insert|update|delete|drop|create|alter|truncate|with|grant|revoke|replace|merge|upsert|copy|call|exec|execute)\b", _sql_text(keys[k]), re.I):
             return "sql"
     has_amount = any(_num(keys.get(k)) is not None for k in PATTERNS["amount_keys"])
     if has_amount and (w & set(verbs["payment"]) or "currency" in keys or w & set(PATTERNS["capabilities"]["payment"]["name"])):
@@ -854,6 +956,11 @@ def classify(tool: str, args: dict) -> str:
     if w & set(verbs["message"]) and set(keys) & {"to", "recipient", "recipients", "channel", "body", "text", "message", "subject", "chat_id", "content"}:
         return "message"
     return "other"
+
+
+def _sql_text(sql: str) -> str:
+    """SQL without comments, which can sit in the middle of a keyword's spacing."""
+    return re.sub(r"--[^\n]*", " ", re.sub(r"/\*[\s\S]*?\*/", " ", sql))
 
 
 def _file_url(v: Any) -> str | None:
@@ -946,7 +1053,7 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
         elif kind == "sql":
             sql = next(args[k] for k in args if str(k).lower() in PATTERNS["sql_keys"] and isinstance(args[k], str))
             for rule, verdict, pat, flags, msg in PATTERNS["sql_patterns"]:
-                if rx(pat, flags).search(sql):
+                if rx(pat, flags).search(_sql_text(sql)):
                     out.append(_f(rule, verdict, msg))
         elif kind.startswith("file_"):
             for key, p in _paths(args):
@@ -984,6 +1091,18 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
                         out.append(_f("VFY-FS-002", v, f"Changes {p}, which is outside the project."))
         elif kind == "payment":
             out.extend(_check_payment(args, pol, context))
+        if kind != "shell":
+            # a path under any key, also nested: a tool may call it `location` or `options.path`
+            covered = {p for _, p in _paths(args)} if kind.startswith("file_") else set()
+            for path_, text in flatten_strings(args):
+                if text in covered or len(text) > 1024 or "\n" in text or re.split(r"[.\[]", path_)[0].lower() in CONTENT_KEYS:
+                    continue
+                h = _file_url(text) or _home_vars(text.replace("\\", "/"))
+                if re.match(r"^(?:~|/|\.\.?/|[A-Za-z]:/)", h):
+                    hit = ctx.sensitive(ctx.path(h))
+                    if hit:
+                        out.append(_f("VFY-FS-003", "ask", f"Names the sensitive file {text} (`{hit}`)."))
+                        touchy = True
         urls = [v for k, v in args.items() if str(k).lower() in PATTERNS["url_keys"] and isinstance(v, str)]
         if kind in ("network", "message"):
             for v in urls:
@@ -1015,7 +1134,8 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
     findings = []
     for f in out:
         key = (f["rule"], f["message"])
-        if f["rule"] in disabled or key in seen:
+        # what guards Verfy itself cannot be listed away
+        if (f["rule"] in disabled and not f["rule"].startswith("VFY-SELF-")) or key in seen:
             continue
         seen.add(key)
         findings.append(f)

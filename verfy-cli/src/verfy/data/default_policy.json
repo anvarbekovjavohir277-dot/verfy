@@ -37,7 +37,18 @@
    "**/secrets.json",
    "**/.npmrc",
    "**/.pypirc",
-   "/proc/*/environ"
+   "/proc/*/environ",
+   "~/.config/gh/**",
+   "~/.config/google-chrome/**",
+   "~/.config/chromium/**",
+   "~/.mozilla/**",
+   "~/Library/Keychains/**",
+   "~/Library/Application Support/Google/Chrome/**",
+   "~/Library/Application Support/Firefox/**",
+   "~/AppData/Local/Google/Chrome/**",
+   "~/AppData/Roaming/Mozilla/**",
+   "/var/run/secrets/**",
+   "/run/secrets/**"
   ],
   "deny_write": [
    "~/.ssh/**",
@@ -82,7 +93,11 @@
    "transfer.sh",
    "*.burpcollaborator.net",
    "*.oast.fun",
-   "*.interact.sh"
+   "*.interact.sh",
+   "169.254.170.2",
+   "169.254.170.23",
+   "fd00:ec2::254",
+   "fd00:ec2::23"
   ],
   "unknown": "ask"
  },

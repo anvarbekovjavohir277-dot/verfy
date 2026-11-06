@@ -126,7 +126,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.16.1" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.17.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -231,7 +231,7 @@ verfy init --template ci          # same, while setting up
 
 The agent cannot change the policy itself: editing it is denied, and so is `verfy policy use` when the agent runs it.
 
-JSON merged over `src/verfy/data/default_policy.json`. Precedence: `--policy FILE`, `./verfy.policy.json`, `~/.verfy/team/policy.json`, `~/.verfy/policy.json`.
+JSON merged over `src/verfy/data/default_policy.json`. Precedence: `--policy FILE`, then `~/.verfy/team/policy.json`, then `~/.verfy/policy.json`. A `./verfy.policy.json` may have come with a clone, so it only makes those stricter. If it is yours, read it and run `verfy policy trust`; it then replaces your own policy until it changes. It never loosens a team policy.
 
 ```json
 {

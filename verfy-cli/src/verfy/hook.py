@@ -63,6 +63,8 @@ def action_from_payload(payload: dict[str, Any]) -> dict:
         return {"server": "claude-code", "tool": "write_file", "arguments": {"file_path": str(data.get("notebook_path") or ""), "content": str(data.get("new_source") or "")}}
     if tool == "Read":
         return {"server": "claude-code", "tool": "read_file", "arguments": {"file_path": str(data.get("file_path") or "")}}
+    if tool == "NotebookRead":
+        return {"server": "claude-code", "tool": "read_file", "arguments": {"file_path": str(data.get("notebook_path") or "")}}
     if tool == "WebFetch":
         return {"server": "claude-code", "tool": "fetch_url", "arguments": {"url": str(data.get("url") or "")}}
     if tool == "Glob" and not data.get("path"):
@@ -136,6 +138,8 @@ def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], 
                      home: Path | None = None, to_action: Callable[[dict], dict] = action_from_payload) -> dict | None:
     if not isinstance(payload, dict):
         raise ValueError("hook input must be a JSON object")
+    if to_action is action_from_payload and not payload.get("tool_name"):
+        return fail_safe("no tool name in the hook input")
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     policy = get_policy(cwd)
     tracked = str(payload.get("session_id") or "") if home and (policy.get("session") or {}).get("after_outside_text", "off") != "off" else ""
