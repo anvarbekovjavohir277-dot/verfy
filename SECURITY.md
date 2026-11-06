@@ -43,6 +43,19 @@ Out of scope: vulnerabilities in Supabase, Vercel or GitHub themselves (report t
 
 We will not pursue legal action against good-faith research that stays within this policy, avoids privacy violations and service degradation, does not access other people's data, and gives us reasonable time to fix the issue before disclosure.
 
+## Check a release
+
+Files on PyPI carry a Sigstore attestation that names the repository that published them. `pip install verfy` does not check it for you, so run this for the version you have:
+
+```bash
+pip install pypi-attestations
+pypi-attestations verify pypi --repository https://github.com/anvarbekovjavohir277-dot/verfy pypi:verfy-VERSION-py3-none-any.whl
+```
+
+It prints `OK:` and the file name, and fails if another repository published the file.
+
+Standalone builds carry a build attestation: `gh attestation verify verfy-linux-x64.tar.gz -R anvarbekovjavohir277-dot/verfy-releases`. The install scripts run this themselves when a signed-in GitHub CLI is there. Without it they check only the SHA-256 list, which shows that the download is whole, not who built it, because the list comes from the same release. Check the attestation yourself, or install with pip and check it as above.
+
 ## Supported versions
 
 Only the latest release receives security fixes during the MVP phase.

@@ -58,7 +58,7 @@
       }
     }
     if ($checked) { Write-Host "verfy: build attestation verified" }
-    else { Write-Host "verfy: checksum verified; to check who built it, see https://verfy.dev/docs#install" }
+    else { Write-Host "verfy: checksum verified: the download is whole, but that does not show who built it; see https://verfy.dev/security#verify" }
 
     Expand-Archive -Path (Join-Path $tmp $file) -DestinationPath $tmp
     $exe = Join-Path $tmp "verfy\verfy.exe"

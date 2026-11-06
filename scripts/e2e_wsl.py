@@ -56,6 +56,10 @@ def main() -> int:
 
     r = box("sh", "-c", f"echo {MARK} > written.txt")
     check("this folder is writable", r.returncode == 0 and MARK in (work / "written.txt").read_text("utf-8"), r)
+    r = box("sh", "-c", f"echo {MARK} > .mcp.json")
+    check("a missing .mcp.json cannot be created from inside, on a Windows drive", r.returncode != 0 and not (work / ".mcp.json").exists(), r)
+    r = box("sh", "-c", f'mkdir -p .claude && echo {MARK} > .claude/settings.json')
+    check("nor a missing .claude/settings.json", r.returncode != 0 and not (work / ".claude" / "settings.json").exists(), r)
 
     secret = Path.home() / ".ssh" / "verfy-e2e-wsl"
     secret.parent.mkdir(exist_ok=True)

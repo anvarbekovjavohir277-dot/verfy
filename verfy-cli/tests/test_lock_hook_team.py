@@ -562,10 +562,9 @@ class RunInSandboxTests(unittest.TestCase):
 
     def setUp(self):
         self.home = tmpdir(self)
-        for name in ("WINDOWS", "LINUX"):
-            posix = mock.patch.object(sandbox, name, False)
-            posix.start()
-            self.addCleanup(posix.stop)
+        posix = mock.patch.object(sandbox, "WINDOWS", False)
+        posix.start()
+        self.addCleanup(posix.stop)
 
     def test_settings_come_from_the_policy(self):
         policy = {"network": {"allow": ["api.example.com"], "deny": ["*.ngrok.io"]}, "files": {"sensitive": ["**/*.pem"]}}

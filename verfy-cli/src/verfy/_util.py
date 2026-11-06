@@ -19,6 +19,15 @@ SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
 VERDICT_RANK = {"deny": 2, "ask": 1, "allow": 0}
 
 
+def real_file(p: Path) -> bool:
+    """A file with something in it. On Linux the sandbox runtime holds a missing file closed: a device inside the sandbox,
+    an empty file outside it while the sandbox runs. Neither is the user's file, so both count as missing."""
+    try:
+        return p.is_file() and p.stat().st_size > 0
+    except OSError:
+        return False
+
+
 @lru_cache(maxsize=None)
 def rx(pattern: str, flags: str = "") -> "re.Pattern[str]":
     f = 0

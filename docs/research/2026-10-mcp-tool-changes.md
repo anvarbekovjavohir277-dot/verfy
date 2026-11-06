@@ -1,4 +1,4 @@
-# MCP tool definitions change between releases, often in patch releases
+# MCP tool definitions change between releases, in about one in three patch releases
 
 *Verfy research, run on 2026-10-24. Method and code: [`research/`](../../research). Anyone can re-run it.*
 
@@ -26,7 +26,7 @@ Nothing was called: only `initialize` and `tools/list` were sent. Servers that w
 
 - **A version range does not freeze what your agent reads.** `^1.2.3` and `~1.2.3` accept patch releases, and a third of patch releases changed a tool definition. (Three servers use date versions such as 2026.10.19; they are left out of the patch count.)
 - **Remote servers do not even have a version.** They were not part of this run, but they can change their tools on any deploy.
-- **We found no malicious change.** The changes we read were ordinary improvements and bug fixes. Many of them do add new instructions for the model. One server, for example, added a step where the user must agree to a cost before a project is created. These instructions are exactly what a rug pull would use, and today they reach agents without anyone reviewing them.
+- **We found no malicious change.** The changes we read were ordinary improvements and bug fixes. Many of them do add new instructions for the model. One server, for example, added a step where the user must agree to a cost before a project is created. These instructions are exactly what a rug pull would use. The problem is not these changes but the path they took: a version range pulls them in and nothing shows you what changed, so a malicious change would arrive the same way.
 
 ## Verfy's own mistakes, found by the same run
 

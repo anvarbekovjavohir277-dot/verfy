@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from verfy.sandbox import windows_homes
@@ -107,6 +108,21 @@ def main() -> int:
     shutil.rmtree(WORK / ".git", ignore_errors=True)
     shutil.rmtree(WORK / ".claude", ignore_errors=True)
 
+    # the same files when they are not there: a command must not be able to create them either
+    for name in ("verfy.lock", "verfy.policy.json", ".mcp.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/skills/x/SKILL.md",
+                 ".cursor/hooks.json", ".cursor/mcp.json", ".git/hooks/pre-commit", ".git/config"):
+        r = box("/bin/sh", "-c", f'mkdir -p "$(dirname {name})" && echo {MARK} > {name}')
+        check(f"a missing {name} cannot be created from inside", r.returncode != 0 and not (WORK / name).exists(), r)
+    left = [n for n in ("verfy.lock", "verfy.policy.json", ".mcp.json", ".claude", ".cursor", *([".git"] if sys.platform == "linux" else [])) if (WORK / n).exists()]
+    check(f"and the sandbox leaves nothing in their place {left}", not left)
+    shutil.rmtree(WORK / ".git", ignore_errors=True)
+    (WORK / ".claude").mkdir()
+    r = box("/bin/sh", "-c", f"echo {MARK} > .claude/settings.local.json")
+    check("nor in a .claude folder that is there", r.returncode != 0 and not (WORK / ".claude" / "settings.local.json").exists(), r)
+    r = box("/bin/sh", "-c", "cat .claude/settings.json")
+    check("where a missing file reads as missing", "No such file" in r.stderr, r)
+    shutil.rmtree(WORK / ".claude", ignore_errors=True)
+
     # network
     # Python, not curl: Apple's curl cannot finish a TLS handshake inside the sandbox, whatever the settings
     get = "import sys, urllib.request as u; print(u.urlopen(sys.argv[1], timeout=30).read().decode())"
@@ -150,12 +166,26 @@ def main() -> int:
     # an agent, whose hook runs inside the sandbox with it
     r = box("claude", "--version", flags=("--agent",))
     check("Claude Code starts inside", r.returncode == 0 and "Claude Code" in r.stdout, r)
+    r = box("claude", "mcp", "list", flags=("--agent",))
+    check("and reads a project that has no .mcp.json", r.returncode == 0, r)
     call = json.dumps({"session_id": "e2e", "tool_name": "Read", "tool_input": {"file_path": "notes.txt"}, "cwd": str(WORK)})
     before = len(ledger.read_text().splitlines())
     r = run("verfy", "run", "--sandbox", "--agent", "--", "verfy", "hook", "pre-tool-use", stdin=call)
     lines = ledger.read_text().splitlines()
     check("its hook signs a receipt from inside", r.returncode == 0 and len(lines) == before + 1, r)
     check("and the receipt says so", json.loads(lines[-1]).get("sandbox") == "srt", r)
+    r = run("verfy", "run", "--sandbox", "--agent", "--", "verfy", "lock", "check", "--config", "none.json")
+    check("verfy reads a missing lock as missing from inside", "PermissionError" not in r.stderr + r.stdout, r)
+    # a server that keeps running, and the hook outside it in the same folder
+    held = subprocess.Popen(["verfy", "run", "--sandbox", "--", "sleep", "60"], cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(8)
+    r = run("verfy", "hook", "pre-tool-use", stdin=call)
+    check("a hook outside goes on working while a sandboxed server runs", r.returncode == 0 and '"ask"' not in r.stdout and '"deny"' not in r.stdout, r)
+    held.terminate()
+    held.wait(timeout=30)
+    time.sleep(2)
+    left = [n for n in ("verfy.lock", "verfy.policy.json", ".mcp.json", ".claude", ".cursor") if (WORK / n).exists()]
+    check(f"and a stopped server leaves nothing in their place {left}", not left)
     r = box("cat", str(HOME / ".ssh" / "verfy-e2e"), flags=("--agent",))
     check("an agent still cannot read credentials", MARK not in r.stdout and r.returncode != 0, r)
     r = run("verfy", "hook", "pre-tool-use", stdin=call)

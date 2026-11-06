@@ -25,6 +25,7 @@ from . import lock as locks
 from . import team as teamlib
 from . import sandbox as sandboxes
 from . import update as updates
+from ._util import real_file
 from .fileio import atomic_write
 from .gateway import Gateway, verfy_home
 from .mcp_client import MCPError, expand, list_tools, list_tools_http
@@ -55,7 +56,7 @@ def home_file(name: str) -> Path:
 def default_policy_path(cwd: Path | None = None) -> Path | None:
     """Project policy, then the team policy pulled by `verfy team pull`, then the user policy."""
     for p in ((cwd or Path(".")) / "verfy.policy.json", home_file("team") / "policy.json", home_file("policy.json")):
-        if p.exists():
+        if real_file(p):
             return p
     return None
 
@@ -64,7 +65,7 @@ def lock_file(args=None) -> Path:
     given = getattr(args, "lock", None) if args is not None else None
     if given:
         return Path(given)
-    if Path("verfy.lock").exists():
+    if real_file(Path("verfy.lock")):
         return Path("verfy.lock")
     return home_file("verfy.lock")
 

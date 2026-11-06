@@ -2,6 +2,13 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.16.1 (2026-11-06)
+
+- **A sandboxed command can no longer create a missing `verfy.lock`, policy, `.mcp.json`, agent settings or git hooks on Linux.** 0.16.0 closed these only when they already existed there, so a command could write a new `.mcp.json` that runs later, outside the sandbox. A review found this. They are now closed on every system whether they exist or not, with a test for each.
+- **The `.claude` and `.cursor` folders are closed as a whole in the sandbox,** so a command cannot add a skill, a rule or a hook script there either.
+- **Verfy reads an empty policy or lock as a missing one.** On Linux the runtime leaves an empty placeholder while a sandboxed command runs, and a hook outside it in the same folder has to keep working.
+- **The installers say what a checksum shows:** that the download is whole, not who built it. `SECURITY.md` and verfy.dev/security show how to check a file on PyPI and a standalone build.
+
 ## 0.16.0 (2026-11-05)
 
 An internal attack test found these, and the [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) lists them all. It was not an independent test.

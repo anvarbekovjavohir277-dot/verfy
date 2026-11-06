@@ -29,7 +29,7 @@ This is **not an independent penetration test**. It was run by the people who bu
 | A sandboxed command writing `verfy.lock`, `verfy.policy.json`, `.claude/settings.json` or `.mcp.json` in its own folder | allowed by Verfy's settings |
 | `AWS_SECRET_ACCESS_KEY` and other keys in the environment of a sandboxed command | passed in (fixed in 0.15.0) |
 
-On Linux, the last sandbox fix covers only files that exist when the command starts; the rest is in the [limits](SECURITY_LIMITATIONS.md). After the fixes, 156 of the 158 commands are stopped or need a person. The other two do no harm: `verfy hook install` adds Verfy, and `export VERFY_HOME` does not reach the hook. Everyday commands stay allowed, and the cases above are now in the test suite both engines run.
+A review after 0.16.0 found that on Linux the last sandbox fix covered only files that existed when the command started, so a command could still create a missing `.mcp.json`. 0.16.1 closes that, with a test on Linux, macOS and WSL2. The rest is in the [limits](SECURITY_LIMITATIONS.md). After the fixes, 156 of the 158 commands are stopped or need a person. The other two do no harm: `verfy hook install` adds Verfy, and `export VERFY_HOME` does not reach the hook. Everyday commands stay allowed, and the cases above are now in the test suite both engines run.
 
 ## What held
 

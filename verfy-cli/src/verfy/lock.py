@@ -35,7 +35,7 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
-from ._util import flatten_strings
+from ._util import flatten_strings, real_file
 from .canonical import digest
 from .fileio import FileLock, atomic_write
 from .receipts import now_iso
@@ -94,7 +94,7 @@ def validate_lock(data: Any) -> dict:
 
 def load_lock(path: str | os.PathLike) -> dict:
     p = Path(path)
-    if not p.exists():
+    if not real_file(p):
         return empty_lock()
     try:
         data = json.loads(p.read_text("utf-8"))

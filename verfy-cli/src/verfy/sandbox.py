@@ -18,14 +18,12 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 # read by default inside the sandbox; a command has no business with these
 CREDENTIALS = ["~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.docker/config.json", "~/.netrc", "~/.npmrc", "~/.config/gcloud", "~/.verfy"]
 
 WINDOWS = os.name == "nt"
-LINUX = sys.platform.startswith("linux")
 RUNTIME_INSTALL = "npm install --global @anthropic-ai/sandbox-runtime"
 MARK_ENV = "VERFY_SANDBOX"  # set by `verfy run --sandbox`, read by the hook and the gateway inside it
 # what a command needs to find its way around; the rest, API keys included, stays outside unless --allow-env names it
@@ -34,9 +32,11 @@ BASE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LA
 BASE_ENV_PREFIXES = ("LC_", "XDG_")
 AGENT_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")  # an agent cannot start without its own key
 AGENT_HOSTS = ["api.anthropic.com"]
-# in the folder a command may write to, but these decide what runs later, outside the sandbox
-PROJECT_CONTROL = ["./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude/settings.json", "./.claude/settings.local.json",
-                   "./.cursor/hooks.json", "./.cursor/mcp.json", "./.git/hooks", "./.git/config"]
+# in the folder a command may write to, but these decide what runs later, outside the sandbox. Closed whether or not they
+# exist, or a command could create one. The file under each folder makes the runtime hold a missing folder with an empty
+# one on Linux, not with a device, so that reading what is under it says "not found".
+PROJECT_CONTROL = ["./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude", "./.claude/settings.json", "./.claude/settings.local.json",
+                   "./.cursor", "./.cursor/hooks.json", "./.cursor/mcp.json", "./.git/hooks", "./.git/config"]
 AGENT_WRITES = ["~/.claude", "~/.claude.json"]
 
 
@@ -133,12 +133,6 @@ def _unique(items) -> list[str]:
     return list(dict.fromkeys(str(i) for i in items))
 
 
-def project_control(cwd: Path | None = None) -> list[str]:
-    """What stays closed in this folder. On Linux the runtime masks a denied path that does not exist, which makes it
-    unreadable: the hook could not read a policy that is not there. So on Linux only what exists goes in."""
-    return [p for p in PROJECT_CONTROL if not LINUX or ((cwd or Path.cwd()) / p).exists()]
-
-
 def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None, agent: bool = False) -> dict:
     """The runtime's settings. It allows no host and no write that nobody listed, so only reads need naming here.
 
@@ -157,7 +151,7 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
             "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),
             "allowRead": [],
             "allowWrite": _unique([".", *(AGENT_WRITES + guarded if agent else []), *writes]),
-            "denyWrite": _unique([*project_control(), *([] if agent else guarded)]),
+            "denyWrite": _unique([*PROJECT_CONTROL, *([] if agent else guarded)]),
         },
     }
 

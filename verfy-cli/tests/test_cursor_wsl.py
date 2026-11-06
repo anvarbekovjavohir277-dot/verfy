@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from verfy import cli, hook, lock, sandbox  # noqa: E402
+from verfy._util import real_file  # noqa: E402
 from verfy.policy import load_policy  # noqa: E402
 from verfy.precheck import check  # noqa: E402
 from verfy.scanner import tool_pin  # noqa: E402
@@ -191,20 +192,41 @@ class AttackRegressionTests(unittest.TestCase):
         self.assertEqual(got["risk"], "medium")
         self.assertIn("annotations", got["summary"] + str(got["changes"]))
 
-    def test_the_sandbox_closes_what_runs_later(self):
-        with mock.patch.object(sandbox, "LINUX", False):
+    def test_the_sandbox_closes_what_runs_later_even_if_it_is_missing(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with mock.patch.object(Path, "cwd", return_value=tmp):
             deny = sandbox.runtime_settings({})["filesystem"]["denyWrite"]
             agent = sandbox.runtime_settings({}, agent=True)["filesystem"]["denyWrite"]
-        for path in ("./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude/settings.json", "./.git/hooks", "./.git/config"):
+        for path in ("./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude", "./.claude/settings.json", "./.cursor", "./.cursor/mcp.json", "./.git/hooks", "./.git/config"):
             self.assertIn(path, deny)
             self.assertIn(path, agent)
 
-    def test_on_linux_a_missing_file_is_left_out_or_the_hook_could_not_read_it(self):
+    def test_what_the_runtime_leaves_in_place_of_a_missing_file_counts_as_missing(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
-        (tmp / "verfy.lock").write_text("{}")
-        with mock.patch.object(sandbox, "LINUX", True):
-            self.assertEqual(sandbox.project_control(tmp), ["./verfy.lock"])
+        (tmp / "verfy.policy.json").write_text("")
+        (tmp / "verfy.lock").write_text("")
+        self.assertFalse(real_file(tmp / "verfy.policy.json"))
+        self.assertFalse(real_file(tmp))
+        self.assertFalse(real_file(tmp / "nothing"))
+        self.assertNotEqual(cli.default_policy_path(tmp), tmp / "verfy.policy.json")
+        self.assertEqual(lock.load_lock(tmp / "verfy.lock"), lock.empty_lock())
+        (tmp / "verfy.policy.json").write_text("{}")
+        self.assertTrue(real_file(tmp / "verfy.policy.json"))
+        self.assertEqual(cli.default_policy_path(tmp), tmp / "verfy.policy.json")
+
+    @unittest.skipIf(sys.platform == "win32", "no /dev/null")
+    def test_a_device_in_place_of_a_file_counts_as_missing(self):
+        self.assertFalse(real_file(Path("/dev/null")))
+        self.assertEqual(lock.load_lock("/dev/null"), lock.empty_lock())
+
+    def test_a_broken_lock_with_something_in_it_still_stops(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "verfy.lock").write_text("not json")
+        with self.assertRaises(lock.LockError):
+            lock.load_lock(tmp / "verfy.lock")
 
 
 class GatewayInputTests(unittest.TestCase):

@@ -67,7 +67,7 @@ if [ -z "${VERFY_DOWNLOAD_BASE:-}" ] && command -v gh >/dev/null 2>&1 && gh auth
   gh attestation verify "$tmp/$file" -R "$REPO" >/dev/null 2>&1 || fail "the build attestation of $file did not verify; nothing was installed"
   say "build attestation verified"
 else
-  say "checksum verified; to check who built it, see https://verfy.dev/docs#install"
+  say "checksum verified: the download is whole, but that does not show who built it; see https://verfy.dev/security#verify"
 fi
 
 tar -xzf "$tmp/$file" -C "$tmp"
