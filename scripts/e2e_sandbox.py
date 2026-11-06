@@ -179,6 +179,8 @@ def main() -> int:
     # a server that keeps running, and the hook outside it in the same folder
     held = subprocess.Popen(["verfy", "run", "--sandbox", "--", "sleep", "60"], cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(8)
+    if sys.platform == "linux":
+        check("control: an empty placeholder holds the missing policy", (WORK / "verfy.policy.json").exists())
     r = run("verfy", "hook", "pre-tool-use", stdin=call)
     check("a hook outside goes on working while a sandboxed server runs", r.returncode == 0 and '"ask"' not in r.stdout and '"deny"' not in r.stdout, r)
     held.terminate()
