@@ -210,6 +210,12 @@ class AttackRegressionTests(unittest.TestCase):
             self.assertIn(path, deny)
             self.assertIn(path, agent)
 
+    def test_an_ipv6_address_goes_to_the_runtime_in_brackets(self):
+        denied = sandbox.runtime_settings(load_policy({"home": "/home/you", "workspace": "/home/you/p"}))["network"]["deniedDomains"]
+        self.assertIn("[fd00:ec2::254]", denied)
+        self.assertIn("169.254.169.254", denied)
+        self.assertFalse([h for h in denied if h.count(":") >= 2 and not h.startswith("[")])
+
     def test_what_the_runtime_leaves_in_place_of_a_missing_file_counts_as_missing(self):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -292,6 +298,10 @@ class SecondAttackRegressionTests(unittest.TestCase):
         self.assertEqual(check({"tool": "Bash", "arguments": {"command": "verfy lock approve demo"}}, pol)["verdict"], "deny")
         self.assertEqual(check({"tool": "write_file", "arguments": {"path": "verfy.lock", "content": "x"}}, pol)["verdict"], "deny")
         self.assertEqual(self.verdict("verfy policy trust"), "deny")
+        pol = load_policy({"home": "/home/you", "workspace": "/home/you/project", "tools": {"trust": ["*"]}})
+        self.assertEqual(check({"tool": "write_file", "arguments": {"path": "verfy.lock", "content": "x"}}, pol)["verdict"], "deny")
+        self.assertEqual(check({"tool": "Bash", "arguments": {"command": "pip uninstall verfy"}}, pol)["verdict"], "deny")
+        self.assertEqual(check({"tool": "Bash", "arguments": {"command": "rm -rf ~"}}, pol)["verdict"], "allow")
 
     def test_a_hook_input_without_a_tool_needs_a_person(self):
         out = hook.run_pre_tool_use({}, get_policy=lambda cwd: self.pol, record=None)

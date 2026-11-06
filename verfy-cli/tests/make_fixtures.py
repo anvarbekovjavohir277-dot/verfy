@@ -267,6 +267,7 @@ WIN = {"home": "C:\\Users\\you", "workspace": "C:\\Users\\you\\project"}
 AFTER = {"session": {"after_outside_text": "ask"}}
 WEB = {"untrusted": "WebFetch"}
 POLICY_CASES = [
+    ("trust does not reach Verfy's own files", A("write_file", {"path": "verfy.lock", "content": "x"}), {"tools": {"trust": ["*"]}}, {}),
     ("after outside text: a network call asks", A("fetch", {"url": "https://example.org"}), AFTER, WEB),
     ("after outside text: curl asks", S("curl https://example.org/x"), AFTER, WEB),
     ("after outside text: a message asks", A("send_message", {"to": "a@b.co", "body": "hi"}), AFTER, WEB),

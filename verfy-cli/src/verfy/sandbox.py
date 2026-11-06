@@ -133,6 +133,11 @@ def _unique(items) -> list[str]:
     return list(dict.fromkeys(str(i) for i in items))
 
 
+def _host(host: str) -> str:
+    """The runtime takes an IPv6 address in brackets, and refuses to start without them."""
+    return f"[{host}]" if host.count(":") >= 2 and not host.startswith("[") else host
+
+
 def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None, agent: bool = False) -> dict:
     """The runtime's settings. It allows no host and no write that nobody listed, so only reads need naming here.
 
@@ -144,8 +149,8 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
     deny_read += [f"{h.as_posix()}/{p[2:]}" for h in windows_homes() for p in CREDENTIALS]
     return {
         "network": {
-            "allowedDomains": _unique([*network.get("allow", []), *(AGENT_HOSTS if agent else []), *hosts]),
-            "deniedDomains": _unique(network.get("deny", [])),
+            "allowedDomains": _unique(_host(h) for h in [*network.get("allow", []), *(AGENT_HOSTS if agent else []), *hosts]),
+            "deniedDomains": _unique(_host(h) for h in network.get("deny", [])),
         },
         "filesystem": {
             "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),

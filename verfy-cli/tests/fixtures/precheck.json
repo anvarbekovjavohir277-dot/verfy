@@ -4342,6 +4342,31 @@
    }
   },
   {
+   "name": "trust does not reach Verfy's own files",
+   "action": {
+    "tool": "write_file",
+    "arguments": {
+     "path": "verfy.lock",
+     "content": "x"
+    }
+   },
+   "policy": {
+    "tools": {
+     "trust": [
+      "*"
+     ]
+    }
+   },
+   "context": {},
+   "expect": {
+    "verdict": "deny",
+    "kind": "file_write",
+    "rules": [
+     "VFY-SELF-001"
+    ]
+   }
+  },
+  {
    "name": "after outside text: a network call asks",
    "action": {
     "tool": "fetch",

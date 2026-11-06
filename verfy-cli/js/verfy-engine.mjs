@@ -1203,6 +1203,10 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
 
     var kind = classify(tool, args), trusted = listed("trust") !== null;
     var network = kind === "network" || kind === "message";
+    if (trusted) { // trust skips the rules, not what guards Verfy itself
+      var plain = check(action, Object.assign({}, pol, { tools: Object.assign({}, pol.tools, { trust: [] }) }), context);
+      plain.findings.forEach(function (f) { if (f.rule.indexOf("VFY-SELF-") === 0) out.push(f); });
+    }
     if (!trusted) {
       var argKeys = Object.keys(args);
       var touchy = false; // a key file read, or a write outside the project

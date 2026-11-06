@@ -1041,6 +1041,9 @@ def check(action: dict, policy: dict | None = None, context: dict | None = None)
     trusted = listed("trust") is not None
     network = kind in ("network", "message")
 
+    if trusted:  # trust skips the rules, not what guards Verfy itself
+        plain = check(action, {**pol, "tools": {**pol["tools"], "trust": []}}, context)
+        out.extend(f for f in plain["findings"] if f["rule"].startswith("VFY-SELF-"))
     if not trusted:
         if "glob" in words(tool) and isinstance(args.get("pattern"), str) and rx(SECRET["token"], "i").search(args["pattern"]):
             out.append(_f("VFY-SELF-006", "deny", f"Lists Verfy's signing key or device token ({args['pattern']})." + SECRET_MSG))
