@@ -175,7 +175,7 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
         raw = stdin.read(MAX_STDIN + 1)
         if len(raw) > MAX_STDIN:
             raise ValueError("hook input is larger than 4 MB")
-        payload = json.loads(raw)
+        payload = json.loads(raw.removeprefix("\ufeff"))  # Windows PowerShell adds a BOM when its output encoding is UTF-8
         if cursor:
             payload = cursor_payload(payload)
             cursor_event = payload.get("hook_event_name")

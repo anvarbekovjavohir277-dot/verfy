@@ -56,6 +56,11 @@ class CursorHookTests(unittest.TestCase):
         self.assertEqual(records[0]["action"]["server"], "cursor")
         self.assertEqual(records[0]["session"], "conv1")
 
+    def test_a_byte_order_mark_from_powershell_changes_nothing(self):
+        # Windows PowerShell puts one before the JSON when its output encoding is UTF-8
+        self.assertEqual(self.run_hook(None, raw="\ufeff" + json.dumps(shell("ls -la")))[0], {"permission": "allow"})
+        self.assertEqual(self.run_hook(None, raw="\ufeff" + json.dumps(shell("rm -rf ~")))[0]["permission"], "deny")
+
     def test_an_ordinary_command_gets_an_answer(self):
         # Cursor counts no output as a failure, so "allow" has to be said
         self.assertEqual(self.run_hook(shell("ls -la"))[0], {"permission": "allow"})
