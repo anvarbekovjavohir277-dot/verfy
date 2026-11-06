@@ -54,7 +54,20 @@ pypi-attestations verify pypi --repository https://github.com/anvarbekovjavohir2
 
 It prints `OK:` and the file name, and fails if another repository published the file.
 
-Standalone builds carry a build attestation: `gh attestation verify verfy-linux-x64.tar.gz -R anvarbekovjavohir277-dot/verfy-releases`. The install scripts run this themselves when a signed-in GitHub CLI is there. Without it they check only the SHA-256 list, which shows that the download is whole, not who built it, because the list comes from the same release. Check the attestation yourself, or install with pip and check it as above.
+Each version also has a GitHub release in the [source repository](https://github.com/anvarbekovjavohir277-dot/verfy/releases) with the same files, each with a Sigstore bundle (`.sigstore.json`).
+
+Standalone builds carry a build attestation: `gh attestation verify verfy-linux-x64.tar.gz -R anvarbekovjavohir277-dot/verfy-releases`. The install scripts run this themselves when a signed-in GitHub CLI is there. Without it they check only the SHA-256 list, which shows that the download is whole, not who built it, because the list comes from the same release.
+
+Without the GitHub CLI, use [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 3 or newer. From 0.16.1 the list of each standalone release is signed, so checking the signature and then the list shows that this repository's workflow built the download:
+
+```bash
+cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity https://github.com/anvarbekovjavohir277-dot/verfy-releases/.github/workflows/build.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+The builds have no Apple or Microsoft code signature, so Windows or macOS may warn the first time you run one.
 
 ## Supported versions
 
