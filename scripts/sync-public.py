@@ -10,6 +10,7 @@ them, then review and commit verfy-releases.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -62,8 +63,23 @@ def main(argv: list[str]) -> int:
                 shutil.copyfile(p, t)
                 changed += 1
                 print("copied ", t.relative_to(dest).as_posix())
+    changed += pin_examples(dest)
     print(f"{changed} file(s) changed in {dest}")
     return 0
+
+
+def pin_examples(dest: Path) -> int:
+    """The version examples in verfy-releases' README name the version just released (verfy-cli/src/verfy/__init__.py)."""
+    version = re.search(r'__version__ = "([^"]+)"', (ROOT / "verfy-cli" / "src" / "verfy" / "__init__.py").read_text("utf-8")).group(1)
+    readme = dest / "README.md"
+    text = readme.read_text("utf-8")
+    new = re.sub(r"VERFY_VERSION=\d+\.\d+\.\d+", f"VERFY_VERSION={version}", text)
+    new = re.sub(r'verfy==\d+\.\d+\.\d+', f"verfy=={version}", new)
+    if new == text:
+        return 0
+    readme.write_bytes(new.encode("utf-8"))
+    print("pinned  README.md examples to", version)
+    return 1
 
 
 if __name__ == "__main__":
