@@ -12,7 +12,7 @@
 
 **For teams using Claude Code, with Cursor in beta: if a tool your agent uses changes in secret, Verfy stops it and signs a receipt for every call it checks.**
 
-**Where to go:** bugs and questions in [issues](https://github.com/anvarbekovjavohir277-dot/verfy/issues); security reports privately, as [SECURITY.md](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md) describes.
+**Where to go:** bugs and questions in [issues](https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues); security reports privately, as [SECURITY.md](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md) describes.
 
 **The Verfy CLI is MIT and always will be. Verfy Cloud is a paid hosted service** (in beta, not on sale yet). This repository is the CLI; the hosted service is developed separately.
 

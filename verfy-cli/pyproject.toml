@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verfy"
-version = "0.17.0"
+version = "0.18.0"
 description = "Verfy: guard coding-agent tool calls, scan and lock MCP tools, and sign a verifiable receipt for every action."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["mcp", "ai-agents", "security", "model-context-protocol", "claude-code", "audit", "receipts"]
+authors = [{ name = "Javohir Anvarbekov", email = "contact@verfy.dev" }]
+keywords = ["mcp", "ai-agents", "security", "model-context-protocol", "claude-code", "cursor", "lockfile", "rug-pull", "tool-poisoning", "audit", "receipts"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

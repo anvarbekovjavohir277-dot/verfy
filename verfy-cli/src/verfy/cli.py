@@ -549,8 +549,15 @@ def _remote_command(args) -> list[str]:
             raise SystemExit("verfy proxy: a token only goes over https://, because anyone on the network can read plain http")
         headers = json.loads(os.environ.get(bridges.HEADERS_ENV) or "{}")
         os.environ[bridges.HEADERS_ENV] = json.dumps({**headers, "Authorization": "Bearer ${" + args.bearer_env + "}"})
-    exe = shutil.which("verfy")
-    return [*([exe] if exe else [sys.executable, "-m", "verfy"]), "bridge", "--url", args.url]
+    return [*self_command(), "bridge", "--url", args.url]
+
+
+def self_command() -> list[str]:
+    """How to start this same Verfy again: the standalone build itself, or the Python running it. Never a `verfy` found on
+    PATH, which can be another version or another program."""
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-m", "verfy"]
 
 
 def cmd_proxy(args) -> int:
@@ -1340,6 +1347,82 @@ def cmd_hook(args) -> int:
     return hooks.run_hook(args.event, record=record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
 
 
+
+def _hook_state(path: Path, cursor: bool) -> str:
+    """"on", "off" or "unreadable" for one settings file."""
+    if not path.exists():
+        return "off"
+    try:
+        current = json.loads(path.read_text("utf-8-sig"))
+        _, missing = hooks.with_cursor_hook(current) if cursor else hooks.with_hook(current)
+    except (OSError, ValueError):
+        return "unreadable"
+    return "off" if missing else "on"
+
+
+def cmd_doctor(args) -> int:
+    """Check this machine's setup without changing anything. Exit 1 when an agent is here but Verfy is not guarding it."""
+    home = verfy_home()
+    problems: list[str] = []
+    print(f"Verfy         {__version__}")
+    key_p = home / "key.json"
+    if key_p.exists():
+        try:
+            print(f"Signing key   {json.loads(key_p.read_text('utf-8')).get('kid', '?')}  ({key_p})")
+        except (OSError, ValueError):
+            problems.append(f"{key_p} cannot be read")
+            print(f"Signing key   unreadable: {key_p}")
+    else:
+        print("Signing key   none yet (created on the first checked call, or with `verfy init`)")
+    ledger_p = Path(args.ledger) if args.ledger else home / "ledger.jsonl"
+    try:
+        entries = read_ledger(ledger_p) if ledger_p.exists() else []
+    except (OSError, ValueError) as e:
+        entries = []
+        problems.append(f"{ledger_p} cannot be read: {e}")
+    if entries:
+        last = entries[-1]
+        print(f"Receipts      {len(entries)} in {ledger_p}; the last one #{last.get('seq')} at {last.get('issued_at', '?')}")
+    else:
+        print(f"Receipts      none in {ledger_p}")
+    claude_here = _claude_code_present()
+    for label, path, cursor, wanted in (
+        ("Claude Code", hooks.settings_path(False), False, claude_here),
+        ("Claude Code", hooks.settings_path(True), False, False),
+        ("Cursor", hooks.cursor_hooks_path(False), True, (Path.home() / ".cursor").is_dir()),
+        ("Cursor", hooks.cursor_hooks_path(True), True, False),
+    ):
+        state = _hook_state(path, cursor)
+        if state == "off" and not path.exists() and not wanted:
+            continue
+        print(f"{label:<13} hook {state}  ({path})")
+        if state == "unreadable":
+            problems.append(f"{path} is not valid JSON, so the agent may not run the hook")
+    user_claude = _hook_state(hooks.settings_path(False), False)
+    project_claude = _hook_state(hooks.settings_path(True), False)
+    if claude_here and "on" not in (user_claude, project_claude):
+        problems.append("Claude Code is installed but no Verfy hook is set, so its tool calls are not checked. Fix: verfy hook install --write")
+    lock_p = lock_file(args)
+    if lock_p.exists():
+        try:
+            n = sum(len(s.get("tools", {})) for s in locks.load_lock(lock_p).get("servers", {}).values())
+            print(f"verfy.lock    {n} tools locked  ({lock_p})")
+        except (OSError, ValueError) as e:
+            problems.append(f"{lock_p} cannot be read: {e}")
+    else:
+        print(f"verfy.lock    none here ({lock_p}); `verfy lock check --update` pins this project's tools")
+    team = teamlib.load_team(home)
+    if team:
+        auto = "uploads on their own" if team.get("auto_sync") is True else "uploads only with `verfy sync`"
+        print(f"Verfy Cloud   enrolled with {team['url']} as {team['device_id']}; {auto}")
+    if problems:
+        print()
+        for p in problems:
+            print(f"{c('PROBLEM', '31;1')}  {p}")
+        return 1
+    print(f"\n{c('OK', '32;1')}  nothing to fix. A hook removed later stops receipts; with Verfy Cloud, Dashboard > Devices shows a device that went quiet.")
+    return 0
+
 # ---------------------------------------------------------------- team
 
 def cmd_team_enroll(args) -> int:
@@ -1718,6 +1801,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--save", action="store_true", help="keep the findings so the Verfy gateway hides tools rated high")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_import)
+
+    p = sub.add_parser("doctor", help="check this machine's setup: hooks, key, receipts, verfy.lock (changes nothing)")
+    p.add_argument("--ledger")
+    p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
+    p.set_defaults(fn=cmd_doctor)
 
     p = sub.add_parser("hook", help="Claude Code (pre-tool-use) or Cursor (cursor) hook, or `hook install`")
     p.add_argument("event", choices=["pre-tool-use", "cursor", "install"])

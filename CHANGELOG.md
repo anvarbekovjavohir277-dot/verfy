@@ -2,6 +2,12 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.18.0 (2026-11-09)
+
+- **`verfy doctor` checks this machine's setup and changes nothing.** It shows the signing key, how many receipts the ledger holds and when the last one was written, whether the Claude Code and Cursor hooks are in place, and how many tools `verfy.lock` pins. It exits 1 when Claude Code is installed without the Verfy hook or a settings file is not valid JSON, so a removed hook can be caught by a script. A removed hook still cannot report itself; with Verfy Cloud, a device that stops sending receipts shows in Dashboard > Devices.
+- **`verfy proxy --url` starts its bridge with this same Verfy.** It used to run the first `verfy` found on PATH, which could be another version or another program. It now uses the standalone build itself or the Python that runs the proxy.
+- The package lists its author, and issues go to [verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues) everywhere.
+
 ## 0.17.0 (2026-11-06)
 
 A second internal attack test found these. The [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) has the numbers, including what a fresh list still got through. It was not an independent test.

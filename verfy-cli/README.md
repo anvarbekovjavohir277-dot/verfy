@@ -15,6 +15,7 @@ verfy init                      # ~/.verfy: signing key (0600), starter policy, 
                                 # in a terminal with Claude Code installed it offers to add the hook (--hook / --no-hook)
 verfy hook install              # shows the change to ~/.claude/settings.json
 verfy hook install --write      # saves it (a backup is kept); --project for ./.claude/settings.json
+verfy doctor                    # is the hook still there? key, receipts, verfy.lock; exit 1 if Claude Code runs unguarded
 ```
 
 Or install the Claude Code plugin, which adds the same hook to every session (use one or the other, not both):
@@ -126,7 +127,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.17.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.18.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:

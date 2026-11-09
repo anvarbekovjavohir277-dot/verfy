@@ -291,6 +291,20 @@ class WrapRemoteTests(unittest.TestCase):
         p.stdout.close()
         return answers
 
+    def test_proxy_url_starts_this_verfy_not_one_on_path(self):
+        from argparse import Namespace
+        from unittest import mock
+        from verfy import cli
+        fake = tmpdir(self)
+        for name in ("verfy", "verfy.exe", "verfy.cmd"):
+            (fake / name).write_text("echo not this one\n", "utf-8")
+            (fake / name).chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": str(fake) + os.pathsep + os.environ.get("PATH", "")}):
+            cmd = cli._remote_command(Namespace(url="http://127.0.0.1:9/mcp", bearer_env=None, cmd=[], name="docs"))
+        self.assertEqual(cmd[:3], [sys.executable, "-m", "verfy"])
+        self.assertEqual(cmd[3:], ["bridge", "--url", "http://127.0.0.1:9/mcp"])
+        self.assertFalse(any(str(fake) in part for part in cmd))
+
     def test_proxy_url_keeps_the_token_in_the_environment(self):
         srv, home = start(self), tmpdir(self)
         token = TOKEN.removeprefix("Bearer ")
