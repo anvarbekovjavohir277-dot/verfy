@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "description": "What the Sandbox workflow installs: the sandbox runtime and Claude Code. package-lock.json holds every integrity hash; install with npm ci.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.310",
+    "@anthropic-ai/sandbox-runtime": "0.0.81"
+  },
+  "allowScripts": {
+    "@anthropic-ai/claude-code@2.1.310": true
+  }
+}

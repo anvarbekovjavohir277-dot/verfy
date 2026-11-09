@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "description": "What the E2E workflow installs: Claude Code, for the plugin step. package-lock.json holds every integrity hash; install with npm ci.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.310"
+  },
+  "allowScripts": {
+    "@anthropic-ai/claude-code@2.1.310": true
+  }
+}

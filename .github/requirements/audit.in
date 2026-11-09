@@ -1,4 +1,5 @@
 # pip-audit and the CLI optional extra it audits. Compile with:
-#   uv pip compile --universal --python-version 3.10 --generate-hashes audit.in -o audit.txt
+#   uv pip compile --universal --python-version 3.13 --generate-hashes audit.in -o audit.txt
+# 3.13 is the Python the Security workflow runs pip-audit on.
 pip-audit
 cryptography>=43
