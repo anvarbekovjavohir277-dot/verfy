@@ -8,9 +8,11 @@
 
 *The server changes the tool's description after you approved it. Verfy notices the new SHA-256 and blocks the call. Try it on [the website](https://verfy.dev/).*
 
-▶ [The 60-second version](docs/assets/verfy-rug-pull.mp4) (MP4, 0.9 MB): pin the tools, the server ships an update, `verfy lock check` fails, the gateway hides the tool and denies the call. Recorded with verfy 0.5.0: every terminal line is real output of its demo server (`python -m verfy.demo_server --rugpull`).
+▶ [The 60-second version](docs/assets/verfy-rug-pull.mp4) (MP4, 1.1 MB): pin the tools, the server ships an update, `verfy lock check` fails, the gateway hides the tool and denies the call. Recorded with verfy 0.17.0: every terminal line is real output of its demo server (`python -m verfy.demo_server --rugpull`).
 
 **For teams using Claude Code, with Cursor in beta: if a tool your agent uses changes in secret, Verfy stops it and signs a receipt for every call it checks.**
+
+**Where to go:** bugs and questions in [issues](https://github.com/anvarbekovjavohir277-dot/verfy/issues); security reports privately, as [SECURITY.md](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md) describes.
 
 **The Verfy CLI is MIT and always will be. Verfy Cloud is a paid hosted service** (in beta, not on sale yet). This repository is the CLI; the hosted service is developed separately.
 
