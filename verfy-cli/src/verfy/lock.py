@@ -7,6 +7,7 @@
       "servers": {
         "filesystem": {
           "package": "pkg@1.2.3",              # the pinned package from the config, when it has one
+          "package_integrity": "sha512-...",   # the registry's hash of that release (npm dist.integrity; PyPI: its files' sha256)
           "server_version": "1.2.3",           # what the server reported when it was locked, for `verfy lock rollback`
           "tools": {
             "read_file": {
@@ -69,6 +70,8 @@ def validate_lock(data: Any) -> dict:
     for server, entry in data["servers"].items():
         if not isinstance(entry, dict) or not isinstance(entry.get("tools"), dict):
             raise LockError(f"verfy.lock: server `{server}` has no `tools` object")
+        if "package_integrity" in entry and not (isinstance(entry["package_integrity"], str) and isinstance(entry.get("package"), str)):
+            raise LockError(f"verfy.lock: server `{server}` has a `package_integrity` without a `package`")
         for name, t in entry["tools"].items():
             if not isinstance(t, dict) or not isinstance(t.get("digest"), str) or not isinstance(t.get("definition"), dict):
                 raise LockError(f"verfy.lock: `{server}/{name}` needs `digest` and `definition`")

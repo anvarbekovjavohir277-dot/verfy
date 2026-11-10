@@ -22,6 +22,7 @@ from . import imports
 from . import discover as cfgscan
 from . import hook as hooks
 from . import lock as locks
+from . import packages as pkgs
 from . import team as teamlib
 from . import sandbox as sandboxes
 from . import update as updates
@@ -741,7 +742,7 @@ def cmd_scitt_verify(args) -> int:
 
 # ---------------------------------------------------------------- lock
 
-LSTAT = {"ok": "32", "drift": "31;1", "changed": "31;1", "new": "33", "removed": "36"}
+LSTAT = {"ok": "32", "drift": "31;1", "changed": "31;1", "new": "33", "removed": "36", "unpinned": "33"}
 RCOL = {"high": "31;1", "medium": "33", "low": "36"}
 
 
@@ -1007,6 +1008,102 @@ def _step_summary(rows: list[dict], errors: list[str], path: Path) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+SARIF_RULES = {
+    "VERFY-LOCK-DRIFT": ("A locked tool definition changed", "error"),
+    "VERFY-LOCK-NEW": ("A tool or package is not in verfy.lock yet", "warning"),
+    "VERFY-LOCK-REMOVED": ("A locked tool is no longer served", "note"),
+    "VERFY-LOCK-PACKAGE": ("The server's package changed since it was locked", "error"),
+    "VERFY-LOCK-UNPINNED": ("The server is started with no exact package version", "warning"),
+    "VERFY-LOCK-FILE": ("A locked agent file changed", "error"),
+    "VERFY-LOCK-ERROR": ("A server could not be checked", "error"),
+}
+
+
+def _write_sarif(out: str, cfg: Path, lock_path: Path, rows: list[dict], pkg_rows: list[dict], file_rows: list[dict], errors: list[str]) -> None:
+    """The result of `verfy lock check` as SARIF 2.1.0, for GitHub code scanning (upload it with github/codeql-action/upload-sarif)."""
+    def uri(p: Path | str) -> str:
+        p = Path(p)
+        try:
+            return p.resolve().relative_to(Path.cwd().resolve()).as_posix()
+        except ValueError:
+            return p.as_posix()
+
+    def result(rule: str, text: str, where: Path | str) -> dict:
+        return {"ruleId": rule, "level": SARIF_RULES[rule][1], "message": {"text": text},
+                "locations": [{"physicalLocation": {"artifactLocation": {"uri": uri(where)}}}]}
+
+    results = []
+    for r in rows:
+        if r["status"] == "drift":
+            e = r.get("explain") or {}
+            results.append(result("VERFY-LOCK-DRIFT", f"{r['server']}/{r['tool']} changed since it was locked, risk {e.get('risk', '?')}: {e.get('summary', '')}", cfg))
+        elif r["status"] == "new":
+            results.append(result("VERFY-LOCK-NEW", f"{r['server']}/{r['tool']} is not in {lock_path}", cfg))
+        elif r["status"] == "removed":
+            results.append(result("VERFY-LOCK-REMOVED", f"{r['server']}/{r['tool']} is locked but no longer served", cfg))
+    for r in pkg_rows:
+        rule = {"changed": "VERFY-LOCK-PACKAGE", "new": "VERFY-LOCK-NEW", "unpinned": "VERFY-LOCK-UNPINNED"}.get(r["status"])
+        if rule:
+            results.append(result(rule, f"{r['server']}: {r['what']}", cfg))
+    for r in file_rows:
+        if r["status"] == "changed":
+            results.append(result("VERFY-LOCK-FILE", f"{r['path']} changed since it was locked", r["path"]))
+        elif r["status"] in ("new", "removed"):
+            results.append(result("VERFY-LOCK-NEW" if r["status"] == "new" else "VERFY-LOCK-REMOVED", f"agent file {r['path']} is {r['status']} compared with {lock_path}", r["path"]))
+    results += [result("VERFY-LOCK-ERROR", e, cfg) for e in errors]
+    doc = {"version": "2.1.0", "$schema": "https://json.schemastore.org/sarif-2.1.0.json", "runs": [{
+        "tool": {"driver": {"name": "Verfy Lock", "version": __version__, "informationUri": "https://verfy.dev/docs#ci",
+                            "rules": [{"id": k, "shortDescription": {"text": v[0]}, "defaultConfiguration": {"level": v[1]}} for k, v in SARIF_RULES.items()]}},
+        "results": results}]}
+    atomic_write(out, json.dumps(doc, indent=2) + "\n")
+
+
+def cmd_lock_pin(args) -> int:
+    """Give every server that a package runner starts with no exact version (`pkg`, `pkg@latest`) an exact one:
+    the version in verfy.lock when the lock has this package, else the registry's latest today. Prints the change;
+    --write saves it, with a backup."""
+    path = Path(args.config)
+    if not path.is_file():
+        raise SystemExit(f"verfy lock pin: no such config file: {path}")
+    cfg = json.loads(path.read_text("utf-8"))
+    servers = cfg.get("mcpServers") or cfg.get("servers") or {}
+    lock = locks.load_lock(args.lock) if Path(args.lock).is_file() else locks.empty_lock()
+    changes = []
+    for name, spec in sorted(servers.items()):
+        if args.server and name not in args.server or not isinstance(spec, dict):
+            continue
+        place = cfgscan.package_in(spec)
+        if place is None or cfgscan.written_version(place[2], place[1]):
+            continue
+        index, eco, written = place
+        locked = str((lock["servers"].get(name) or {}).get("package") or "")
+        version = cfgscan.written_version(locked, eco) if locked and pkgs.package_name(locked, eco) == pkgs.package_name(written, eco) else None
+        source = str(args.lock)
+        if not version:
+            try:
+                version = pkgs.latest(written, eco)
+            except pkgs.PackageError as e:
+                print(f"verfy lock pin: `{name}`: {e}", file=sys.stderr)
+                return 3
+            source = "the registry's latest today"
+        changes.append((name, spec, index, written, cfgscan.pin_package(written, version, eco), source))
+    if not changes:
+        print(f"Every server in {path} that a package runner starts already names an exact version.")
+        return 0
+    for name, _, _, written, pinned, source in changes:
+        print(f"  {name}: `{written}` -> `{pinned}`  (from {source})")
+    if not args.write:
+        print("Add --write to save this (a backup is kept). Then run `verfy lock check --update` to lock the packages.")
+        return 0
+    for _, spec, index, _, pinned, _ in changes:
+        spec["args"][index] = pinned
+    backup = path.with_suffix(path.suffix + ".verfy-backup")
+    shutil.copyfile(path, backup)
+    path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", "utf-8")
+    print(f"{path}: {len(changes)} server(s) pinned. Backup: {backup}. Next: `verfy lock check --update`, then commit both files.")
+    return 0
+
+
 def cmd_lock_rollback(args) -> int:
     """Go back to a release whose tools match the lock. Starts that release to prove it, and only then changes the config."""
     path = Path(args.config)
@@ -1090,11 +1187,17 @@ def cmd_lock_check(args) -> int:
         if isinstance(live.get("server"), dict) and isinstance(live["server"].get("version"), str):
             versions[name] = live["server"]["version"]
         rows += [{"server": name, **r} for r in locks.compare(lock, name, current[name])]
-    packages = {}
+    # the code of each server, not only its tools: the package the config starts, and the registry's hash of it
+    pkg_rows: list[dict] = []
     for name in current:
         place = cfgscan.package_in(servers[name])
-        if place and cfgscan.written_version(place[2], place[1]):
-            packages[name] = place[2]
+        entry = lock["servers"].get(name) or {}
+        try:
+            res = pkgs.check(entry.get("package"), entry.get("package_integrity"), place[2] if place else None, place[1] if place else None)
+        except pkgs.PackageError as e:
+            errors.append(f"`{name}` package: {e}")
+            continue
+        pkg_rows.append({"server": name, "package": place[2] if place else None, "locked": entry.get("package"), **res})
     gone = [s for s in lock["servers"] if s not in servers and (not wanted or s in wanted)]
     for name in gone:
         rows += [{"server": name, **r} for r in locks.compare(lock, name, [])]
@@ -1106,19 +1209,24 @@ def cmd_lock_check(args) -> int:
         file_rows = _file_rows(lock["files"], files_now, root, user=False)
 
     if args.update:
-        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows, versions, packages)
+        return _lock_check_update(args, path, lock, current, gone, rows, errors, files_now if "files" in lock and not wanted else None, file_rows, versions, pkg_rows)
 
     for r in rows:
         if r["status"] in ("drift", "new"):
             old = ((lock["servers"].get(r["server"]) or {}).get("tools", {}).get(r["tool"]) or {}).get("definition")
             new = next((locks.definition(t) for t in current.get(r["server"], []) if t.get("name") == r["tool"]), None)
             r["explain"] = locks.explain(old, new)
+    if args.sarif:
+        _write_sarif(args.sarif, cfg, path, rows, pkg_rows, file_rows, errors)
     if args.json:
-        print(json.dumps({"lock": str(path), "config": str(cfg), "tools": rows, "files": file_rows, "errors": errors}, indent=2))
+        print(json.dumps({"lock": str(path), "config": str(cfg), "tools": rows, "packages": pkg_rows, "files": file_rows, "errors": errors}, indent=2))
     else:
         print(f"{c('Verfy Lock check', '1')}  {cfg} against {path}")
         for r in rows:
             print(f"  {c(r['status'].ljust(7), LSTAT[r['status']])} {r['server']}/{r['tool']}  {(r['locked'] or '-')[:19]}  ->  {(r['current'] or '-')[:19]}")
+        for r in pkg_rows:
+            if r["status"] != "ok":
+                print(f"  {c(r['status'].ljust(8), LSTAT[r['status']])} {r['server']} (package)  {r['what']}")
         if file_rows:
             print(f"{c('Agent files', '1')}  ({len(files_now)} found, {len(lock['files'])} locked)")
             _print_file_rows(file_rows, lock["files"], files_now, show_ok=False)
@@ -1138,6 +1246,13 @@ def cmd_lock_check(args) -> int:
             gh("error", f"{r['server']}/{r['tool']} is not in {path}. Review it, then run `verfy lock check --update` and commit the lock.")
         elif r["status"] == "removed":
             gh("warning", f"{r['server']}/{r['tool']} is in {path} but the server no longer serves it.")
+    for r in pkg_rows:
+        if r["status"] == "changed":
+            gh("error", f"{r['server']}: the server's code changed: {r['what']}. Review the release, then run `verfy lock check --update` and commit the lock.")
+        elif r["status"] == "new":
+            gh("error", f"{r['server']}: {r['what']}. Review it, then run `verfy lock check --update` and commit the lock.")
+        elif r["status"] == "unpinned":
+            gh("warning", f"{r['server']}: {r['what']}.")
     for e in errors:
         gh("error", f"could not read tools from {e}")
     for r in file_rows:
@@ -1145,21 +1260,23 @@ def cmd_lock_check(args) -> int:
             gh("error", f"{r['path']} changed since it was locked, risk {r['explain']['risk']}: {r['explain']['summary']}. Review the diff, then run `verfy lock files --update` and commit the lock.")
         elif r["status"] in ("new", "removed"):
             gh("warning", f"agent file {r['path']} is {r['status']} compared with {path}.")
-    _step_summary(rows + [{"server": "(file)", "tool": r["path"], "status": "drift" if r["status"] == "changed" else r["status"], "locked": r["locked"], "current": r["current"], "explain": r.get("explain")} for r in file_rows if r["status"] != "ok"], errors, path)
-    if any(r["status"] == "drift" for r in rows) or any(r["status"] == "changed" for r in file_rows):
+    _step_summary(rows + [{"server": "(file)", "tool": r["path"], "status": "drift" if r["status"] == "changed" else r["status"], "locked": r["locked"], "current": r["current"], "explain": r.get("explain")} for r in file_rows if r["status"] != "ok"]
+                  + [{"server": r["server"], "tool": "(package)", "status": "drift" if r["status"] == "changed" else r["status"], "locked": r["locked"], "current": r["package"], "explain": {"risk": "high" if r["status"] == "changed" else "medium", "summary": r["what"]}} for r in pkg_rows if r["status"] != "ok"], errors, path)
+    if any(r["status"] == "drift" for r in rows) or any(r["status"] == "changed" for r in file_rows + pkg_rows):
         return 2
     if errors:
         return 3
-    if any(r["status"] in ("new", "removed") for r in rows + file_rows):
+    if any(r["status"] in ("new", "removed") for r in rows + file_rows + pkg_rows) or (args.require_pinned and any(r["status"] == "unpinned" for r in pkg_rows)):
         return 1
     if not args.json:
-        print(f"{c('OK', '32;1')}  {len(rows)} tool definitions" + (f" and {len(file_rows)} agent files" if file_rows else "") + f" match {path}.")
+        pinned = sum(1 for r in pkg_rows if r["status"] == "ok" and r["package"])
+        print(f"{c('OK', '32;1')}  {len(rows)} tool definitions" + (f", {pinned} server packages" if pinned else "") + (f" and {len(file_rows)} agent files" if file_rows else "") + f" match {path}.")
     return 0
 
 
 def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[str], rows: list[dict], errors: list[str],
                        files_now: dict | None = None, file_rows: list[dict] | None = None, versions: dict[str, str] | None = None,
-                       packages: dict[str, str] | None = None) -> int:
+                       pkg_rows: list[dict] | None = None) -> int:
     if errors:
         for e in errors:
             print(f"verfy lock check: could not read tools from {e}", file=sys.stderr)
@@ -1167,9 +1284,19 @@ def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[s
         return 3
     todo = [r for r in rows if r["status"] != "ok"]
     file_todo = [r for r in file_rows or [] if r["status"] != "ok"]
-    if not todo and not file_todo:
+    exact = {r["server"]: r for r in pkg_rows or [] if r["package"] and r["integrity"]}
+    pkg_todo = [r for r in pkg_rows or [] if r["status"] in ("changed", "new") or (r["server"] in exact and not (lock["servers"].get(r["server"]) or {}).get("package_integrity"))]
+    for r in pkg_rows or []:
+        if r["status"] == "unpinned":
+            print(f"  {c('unpinned', LSTAT['unpinned'])} {r['server']} (package)  {r['what']}")
+    if not todo and not file_todo and not pkg_todo:
         print(f"{path} already matches every server.")
         return 0
+    for r in pkg_todo:
+        print(c(f"{r['server']} (package)", "1"))
+        print(f"  {r['what'] or 'record the registry integrity of `' + str(r['package']) + '`'}")
+        if r["package"] and r["integrity"]:
+            print(f"  {r['package']}  {r['integrity']}")
     for r in todo:
         old = ((lock["servers"].get(r["server"]) or {}).get("tools", {}).get(r["tool"]) or {}).get("definition")
         new = next((locks.definition(t) for t in current.get(r["server"], []) if t.get("name") == r["tool"]), None)
@@ -1182,7 +1309,7 @@ def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[s
     if file_todo:
         print(c("Agent files", "1"))
         _print_file_rows(file_todo, lock.get("files") or {}, files_now or {})
-    todo = todo + file_todo
+    todo = todo + file_todo + pkg_todo
     if not args.yes:
         if not sys.stdin.isatty():
             raise SystemExit("verfy lock check --update: review the changes above, then run again with --yes")
@@ -1195,8 +1322,12 @@ def _lock_check_update(args, path: Path, lock: dict, current: dict, gone: list[s
             entry = lk["servers"].setdefault(name, {"tools": {}})
             if (versions or {}).get(name):
                 entry["server_version"] = versions[name]
-            if (packages or {}).get(name):
-                entry["package"] = packages[name]
+            if name in exact:
+                entry["package"] = exact[name]["package"]
+                entry["package_integrity"] = exact[name]["integrity"]
+            else:  # not started as an exact package any more: nothing of its code to pin
+                entry.pop("package", None)
+                entry.pop("package_integrity", None)
             names = set()
             for t in tools:
                 d = locks.definition(t)
@@ -1772,7 +1903,15 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--yes", action="store_true", help="with --update: write without the interactive prompt (after reviewing)")
     x.add_argument("--timeout", type=float, default=60.0)
     x.add_argument("--json", action="store_true")
+    x.add_argument("--sarif", metavar="FILE", help="also write the result as SARIF 2.1.0, for GitHub code scanning")
+    x.add_argument("--require-pinned", action="store_true", help="exit 1 when a server is started with no exact package version")
     x.set_defaults(fn=cmd_lock_check)
+    x = lk.add_parser("pin", help="give every npx/uvx/pipx server in a config an exact package version (from verfy.lock, else the latest)")
+    x.add_argument("--config", default=".mcp.json", help="MCP config to pin (default .mcp.json)")
+    x.add_argument("--lock", default="verfy.lock", help="lock file to take versions from (default ./verfy.lock)")
+    x.add_argument("--server", action="append", help="only pin this server (repeatable)")
+    x.add_argument("--write", action="store_true", help="save the change (a backup is kept)")
+    x.set_defaults(fn=cmd_lock_pin)
     x = lk.add_parser("rollback", help="go back to a release whose tools match the lock: starts it to prove it, then pins it in the config")
     x.add_argument("server")
     x.add_argument("--to", metavar="VERSION", help="the package version (default: the version recorded when the server was locked)")

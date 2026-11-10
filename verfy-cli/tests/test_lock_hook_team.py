@@ -382,13 +382,14 @@ class PackageInLockTests(unittest.TestCase):
         cfg = home / ".mcp.json"
         cfg.write_text(json.dumps({"mcpServers": {"docs": spec}}), "utf-8")
         tools = [{"name": "read", "description": "Read.", "inputSchema": {"type": "object"}}]
-        with mock.patch("verfy.cli._live_server", return_value={"server": {"name": "docs", "version": version}, "tools": tools}):
+        with mock.patch("verfy.cli._live_server", return_value={"server": {"name": "docs", "version": version}, "tools": tools}),                 mock.patch("verfy.packages.fetch_json", return_value={"dist": {"integrity": "sha512-TEST"}}):  # no network in tests
             run_cli(home, "lock", "check", "--config", str(cfg), "--lock", str(home / "verfy.lock"), "--update", "--yes")
         return json.loads((home / "verfy.lock").read_text("utf-8"))["servers"]["docs"]
 
     def test_a_pinned_package_goes_into_the_lock(self):
         entry = self.check_write(tmpdir(self), {"command": "npx", "args": ["-y", "@scope/pkg@1.2.3"]})
         self.assertEqual(entry["package"], "@scope/pkg@1.2.3")
+        self.assertEqual(entry["package_integrity"], "sha512-TEST")  # the registry's hash of that release
         self.assertEqual(entry["server_version"], "9.0.0")
 
     def test_an_unpinned_one_does_not(self):

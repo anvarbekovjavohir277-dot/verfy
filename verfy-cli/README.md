@@ -127,7 +127,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.18.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.19.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -137,6 +137,18 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```
 
 Verfy does not follow redirects, so a key only goes to the address in the config, and it never prints header values. A server that only speaks the older SSE transport is read the same way.
+
+### Lock the server's code too
+
+A tool definition can stay the same while the server's code changes, and `npx pkg@latest` runs whatever the registry serves that day. When a config starts a server through npx, bunx, pnpm dlx, yarn dlx, uvx or pipx with an exact version, `verfy lock check --update` also records that package and the registry's own hash of the release (npm `dist.integrity`, the sha512 npm checks on install; on PyPI the sha256 of every file of the release). `verfy lock check` then fails (exit 2) when the config starts another version, drops the version, or the registry reports other files for the locked version.
+
+```bash
+verfy lock pin                    # npx pkg@latest -> pkg@1.2.3 (the locked version, else today's latest); --write saves it
+verfy lock check --require-pinned # also exit 1 when a server is started with no exact version
+verfy lock check --sarif verfy.sarif   # the result for GitHub code scanning
+```
+
+A remote server runs whatever its owner deployed, so only its tools can be locked. Docker images are not pinned by digest yet.
 
 ## Check and verify
 

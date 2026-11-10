@@ -2,6 +2,13 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.19.0 (2026-11-10)
+
+- **`verfy.lock` pins the server's code, not only its tools.** For a server that npx, bunx, pnpm dlx, yarn dlx, uvx or pipx starts with an exact version, `verfy lock check --update` records the package and the registry's hash of that release: npm's `dist.integrity` (sha512), or on PyPI the sha256 of every file of the release. `verfy lock check` fails with exit 2 when the config starts another version, drops the version, or the registry now reports other files for the locked version, even when every tool definition is unchanged. **After you upgrade, run `verfy lock check --update` once** to record the hashes; until then the check passes and says they are missing.
+- **`verfy lock pin`** gives every server started as `pkg` or `pkg@latest` an exact version: the one in `verfy.lock` when the lock has the package, else the registry's latest today. It prints the change; `--write` saves it with a backup.
+- **`verfy lock check --require-pinned`** exits 1 when a server is started with no exact version. Without it, such a server is a warning.
+- **`verfy lock check --sarif FILE`** also writes the result as SARIF 2.1.0, so GitHub code scanning shows each changed tool, package or agent file. The GitHub Action has `sarif` and `require-pinned` inputs.
+
 ## 0.18.0 (2026-11-09)
 
 - **`verfy doctor` checks this machine's setup and changes nothing.** It shows the signing key, how many receipts the ledger holds and when the last one was written, whether the Claude Code and Cursor hooks are in place, and how many tools `verfy.lock` pins. It exits 1 when Claude Code is installed without the Verfy hook or a settings file is not valid JSON, so a removed hook can be caught by a script. A removed hook still cannot report itself; with Verfy Cloud, a device that stops sending receipts shows in Dashboard > Devices.

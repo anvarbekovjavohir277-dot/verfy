@@ -15,6 +15,12 @@ inputs:
   servers:
     description: Optional space-separated server names to check (default all servers in the config).
     default: ""
+  require-pinned:
+    description: Fail when a server is started with no exact package version (npx pkg@latest, uvx pkg). Set to "true" to turn it on.
+    default: "false"
+  sarif:
+    description: Optional path to also write the result as SARIF 2.1.0, to upload to GitHub code scanning with github/codeql-action/upload-sarif.
+    default: ""
 
 runs:
   using: composite
@@ -30,7 +36,11 @@ runs:
         VERFY_CONFIG: ${{ inputs.config }}
         VERFY_LOCK: ${{ inputs.lock }}
         VERFY_SERVERS: ${{ inputs.servers }}
+        VERFY_REQUIRE_PINNED: ${{ inputs.require-pinned }}
+        VERFY_SARIF: ${{ inputs.sarif }}
       run: |
         args=(lock check --config "$VERFY_CONFIG" --lock "$VERFY_LOCK")
         for s in $VERFY_SERVERS; do args+=(--server "$s"); done
+        if [ "$VERFY_REQUIRE_PINNED" = "true" ]; then args+=(--require-pinned); fi
+        if [ -n "$VERFY_SARIF" ]; then args+=(--sarif "$VERFY_SARIF"); fi
         verfy "${args[@]}"
