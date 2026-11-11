@@ -17,6 +17,7 @@ The extension changes no file itself and makes no network call. Every change goe
 - `Verfy: Set up every agent on this computer`
 - `Verfy: Open the terminal inside the sandbox` / `Stop opening the terminal inside the sandbox`
 - `Verfy: Check this computer (doctor)`
+- `Verfy: Show risky agent settings` (`verfy posture`: bypass modes, hooks switched off, a sandbox turned off)
 - `Verfy: Show the latest receipts`
 - `Verfy: Install the Verfy CLI`
 

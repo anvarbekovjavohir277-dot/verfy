@@ -55,6 +55,11 @@
         "category": "Verfy"
       },
       {
+        "command": "verfy.posture",
+        "title": "Show risky agent settings",
+        "category": "Verfy"
+      },
+      {
         "command": "verfy.receipts",
         "title": "Show the latest receipts",
         "category": "Verfy"

@@ -128,6 +128,7 @@ async function menu() {
     { label: "Open the terminal inside the sandbox", id: "verfy.sandboxOn" },
     { label: "Stop opening the terminal inside the sandbox", id: "verfy.sandboxOff" },
     { label: "Check this computer (doctor)", id: "verfy.doctor" },
+    { label: "Show risky agent settings (posture)", id: "verfy.posture" },
     { label: "Show the latest receipts", id: "verfy.receipts" },
   ];
   const pick = await vscode.window.showQuickPick(items, { placeHolder: "Verfy" });
@@ -149,6 +150,7 @@ async function activate(context) {
     vscode.commands.registerCommand("verfy.sandboxOn", () => previewThenWrite(["setup", "--sandbox-terminal", "on"], "Open the terminal of VS Code, Cursor and Windsurf inside the sandbox")),
     vscode.commands.registerCommand("verfy.sandboxOff", () => previewThenWrite(["setup", "--sandbox-terminal", "off"], "Stop opening the terminal inside the sandbox")),
     vscode.commands.registerCommand("verfy.doctor", show(["doctor"])),
+    vscode.commands.registerCommand("verfy.posture", show(["posture"])),
     vscode.commands.registerCommand("verfy.receipts", show(["ledger", "show"])),
     vscode.commands.registerCommand("verfy.install", install),
     vscode.commands.registerCommand("verfy.menu", menu),
