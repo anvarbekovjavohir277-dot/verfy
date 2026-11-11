@@ -354,7 +354,7 @@
   [
    "VFY-SELF-005",
    "ask",
-   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\bgit\\s+(?:rm|mv)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\.codex[\\/]+hooks\\.json|\\.gemini[\\/]+settings\\.json|\\.copilot[\\/]+hooks\\b|\\.github[\\/]+hooks\\b|windsurf[\\/]+hooks\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
+   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\bgit\\s+(?:rm|mv)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\.codex[\\/]+hooks\\.json|\\.gemini[\\/]+settings\\.json|\\.copilot[\\/]+hooks\\b|\\.github[\\/]+hooks\\b|windsurf[\\/]+hooks\\.json|\\.devin[\\/]+(?:hooks\\.v1|config(?:\\.local)?)\\.json|[\\/]devin[\\/]+config\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
    "i",
    "Touches a file Verfy relies on (hook settings, verfy.lock, the policy or the Verfy install) in a way Verfy cannot follow."
   ],
@@ -1407,6 +1407,11 @@
    "**/.github/hooks/**",
    "~/.codeium/windsurf/hooks.json",
    "**/.windsurf/hooks.json",
+   "~/.config/devin/config.json",
+   "~/AppData/Roaming/devin/config.json",
+   "**/.devin/hooks.v1.json",
+   "**/.devin/config.json",
+   "**/.devin/config.local.json",
    "**/verfy.lock",
    "**/verfy.policy.json",
    "~/.local/share/verfy/**",

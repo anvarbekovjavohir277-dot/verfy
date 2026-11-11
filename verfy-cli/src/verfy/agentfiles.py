@@ -38,10 +38,10 @@ SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "bu
 
 # instruction files an agent reads wherever they appear in the repository
 INSTRUCTION_NAMES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", ".cursorrules", ".windsurfrules"}
-PROJECT_FILES = [".claude/settings.json", ".github/copilot-instructions.md", ".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json", ".cursor/hooks.json", ".codex/hooks.json", ".codex/config.toml", ".windsurf/hooks.json"]
+PROJECT_FILES = [".claude/settings.json", ".github/copilot-instructions.md", ".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", ".gemini/settings.json", ".cursor/hooks.json", ".codex/hooks.json", ".codex/config.toml", ".windsurf/hooks.json", ".devin/hooks.v1.json", ".devin/config.json"]
 PROJECT_DIRS = [".claude/agents", ".claude/commands", ".claude/skills", ".claude/hooks", ".cursor/rules", ".windsurf/rules", ".github/instructions", ".github/hooks", ".gemini/commands"]
 
-USER_FILES = ["~/.claude/CLAUDE.md", "~/.claude/settings.json", "~/.codex/AGENTS.md", "~/.codex/config.toml", "~/.gemini/GEMINI.md", "~/.gemini/settings.json", "~/.cursor/mcp.json", "~/.cursor/hooks.json", "~/.codex/hooks.json", "~/.copilot/mcp-config.json", "~/.codeium/windsurf/mcp_config.json", "~/.codeium/windsurf/hooks.json", "~/.codeium/windsurf/memories/global_rules.md"]
+USER_FILES = ["~/.claude/CLAUDE.md", "~/.claude/settings.json", "~/.codex/AGENTS.md", "~/.codex/config.toml", "~/.gemini/GEMINI.md", "~/.gemini/settings.json", "~/.cursor/mcp.json", "~/.cursor/hooks.json", "~/.codex/hooks.json", "~/.copilot/mcp-config.json", "~/.codeium/windsurf/mcp_config.json", "~/.codeium/windsurf/hooks.json", "~/.codeium/windsurf/memories/global_rules.md", "~/.config/devin/config.json", "~/AppData/Roaming/devin/config.json"]
 USER_DIRS = ["~/.claude/agents", "~/.claude/commands", "~/.claude/skills", "~/.claude/plugins/cache", "~/.codex/prompts", "~/.gemini/commands", "~/.copilot/hooks"]
 
 

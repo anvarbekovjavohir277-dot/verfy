@@ -42,6 +42,8 @@ AGENTS = (
     Agent("gemini", "Gemini CLI", "gemini", ((".gemini",),), ("gemini",), ((".gemini", "settings.json"),), ((".gemini", "settings.json"),)),
     Agent("copilot", "GitHub Copilot", "copilot", ((".copilot",), *VSCODE_USER), ("copilot", "code"),
           ((".copilot", "mcp-config.json"), *(d + ("mcp.json",) for d in VSCODE_USER)), ((".vscode", "mcp.json"),)),
+    Agent("devin", "Devin Desktop", "devin", ((".devin",), (".config", "devin"), ("AppData", "Roaming", "devin"), (".codeium", "windsurf")),
+          ("devin",), (), ()),
     Agent("windsurf", "Windsurf", "windsurf", ((".codeium", "windsurf"),), ("windsurf",), ((".codeium", "windsurf", "mcp_config.json"),), ()),
     Agent("claude-desktop", "Claude Desktop", None, DESKTOP, (), tuple(d + ("claude_desktop_config.json",) for d in DESKTOP), ()),
 )

@@ -45,7 +45,7 @@ AGENT_PROFILES = {
 # one on Linux, not with a device, so that reading what is under it says "not found".
 PROJECT_CONTROL = ["./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude", "./.claude/settings.json", "./.claude/settings.local.json",
                    "./.cursor", "./.cursor/hooks.json", "./.cursor/mcp.json", "./.codex", "./.codex/hooks.json", "./.gemini",
-                   "./.gemini/settings.json", "./.github/hooks", "./.github/hooks/verfy.json", "./.windsurf", "./.windsurf/hooks.json",
+                   "./.gemini/settings.json", "./.github/hooks", "./.github/hooks/verfy.json", "./.windsurf", "./.windsurf/hooks.json", "./.devin", "./.devin/config.json",
                    "./.vscode/mcp.json", "./.git/hooks", "./.git/config"]
 AGENT_WRITES = ["~/.claude", "~/.claude.json"]
 

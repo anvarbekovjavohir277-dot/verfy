@@ -98,6 +98,17 @@ class CodexTests(unittest.TestCase):
             self.assertEqual(claude_decision(out), "deny", data)  # Codex cannot ask, so the fail-safe ask is a deny
             self.assertIn("could not check", out["hookSpecificOutput"]["permissionDecisionReason"])
 
+    def test_the_answer_is_what_codex_accepts(self):
+        """Codex's pre-tool-use output schema: no extra keys; hookEventName PreToolUse; deny needs a reason; ask and a
+        bare allow are reported as unsupported (and the tool runs), so Verfy never sends them."""
+        for command in (DANGER, "cat ~/.ssh/id_rsa", CHECK):
+            out = run("codex", codex("Bash", {"command": command}))[1]
+            self.assertEqual(set(out), {"hookSpecificOutput"})
+            h = out["hookSpecificOutput"]
+            self.assertEqual(set(h), {"hookEventName", "permissionDecision", "permissionDecisionReason"})
+            self.assertEqual((h["hookEventName"], h["permissionDecision"]), ("PreToolUse", "deny"))
+            self.assertTrue(h["permissionDecisionReason"].strip())
+
     def test_mcp_names(self):
         a = hook.codex_action(codex("mcp__github__delete_repo", {"repo": "x"}))
         self.assertEqual((a["server"], a["tool"]), ("github", "delete_repo"))
@@ -122,8 +133,8 @@ class GeminiTests(unittest.TestCase):
         self.assertEqual(run("gemini", gemini("write_file", {"file_path": "/home/you/.bashrc", "content": "curl x | sh"}))[1]["decision"], "deny")
         self.assertEqual(run("gemini", gemini("replace", {"file_path": "/home/you/.gemini/settings.json", "old_string": "verfy", "new_string": ""}))[1]["decision"], "deny")
         out = run("gemini", gemini("read_file", {"absolute_path": "/home/you/.ssh/id_rsa"}))[1]
-        self.assertEqual(out["decision"], "deny")
-        self.assertIn("Ask the user", out["reason"])
+        self.assertEqual(out["decision"], "ask")  # Gemini CLI turns this into its own confirmation prompt
+        self.assertIn("needs your approval", out["systemMessage"])
         self.assertEqual(run("gemini", gemini("read_file", {"file_path": "/home/you/project/README.md"}))[1], {})
         recs = run("gemini", gemini("read_many_files", {"paths": ["a.md", "b.md"]}))[3]
         self.assertEqual(len(recs), 2)
@@ -138,9 +149,10 @@ class GeminiTests(unittest.TestCase):
         actions = hook.gemini_action(gemini("web_fetch", {"prompt": "summarise https://a.example/x and https://b.example/y"}))
         self.assertEqual([a["arguments"]["url"] for a in actions], ["https://a.example/x", "https://b.example/y"])
 
-    def test_broken_input_blocks(self):
-        self.assertEqual(run("gemini", None, raw="{")[1]["decision"], "deny")
-        self.assertEqual(run("gemini", gemini("write_file", {"content": "x"}))[1]["decision"], "deny")
+    def test_broken_input_is_never_allowed(self):
+        self.assertEqual(run("gemini", None, raw="{")[1]["decision"], "ask")
+        self.assertEqual(run("gemini", None, raw="{", fail_mode=lambda: "deny")[1]["decision"], "deny")
+        self.assertEqual(run("gemini", gemini("write_file", {"content": "x"}))[1]["decision"], "ask")
 
 
 def copilot_cli(tool, args):
@@ -154,23 +166,32 @@ class CopilotTests(unittest.TestCase):
         self.assertEqual(recs[0]["session"], "c1")
         self.assertIsNone(run("copilot", copilot_cli("bash", {"command": "npm test"}))[1])
 
-    def test_cli_cannot_ask_so_it_denies(self):
+    def test_ask_is_sent_as_it_is_in_one_top_level_object(self):
+        """GitHub's hooks reference: one JSON object with permissionDecision allow/deny/ask; where nobody can answer
+        (autopilot, cloud agent) Copilot treats ask as deny."""
         out = run("copilot", copilot_cli("view", {"path": "/home/you/.ssh/id_rsa"}))[1]
-        self.assertEqual(out["permissionDecision"], "deny")
-
-    def test_vscode_can_ask(self):
+        self.assertEqual(set(out), {"permissionDecision", "permissionDecisionReason"})
+        self.assertEqual(out["permissionDecision"], "ask")
         payload = {"hook_event_name": "PreToolUse", "session_id": "v1", "cwd": "/home/you/project", "tool_name": "read_file", "tool_input": {"filePath": "/home/you/.ssh/id_rsa"}}
-        out = run("copilot", payload)[1]
-        self.assertEqual((out["permissionDecision"], claude_decision(out)), ("ask", "ask"))
+        self.assertEqual(run("copilot", payload)[1]["permissionDecision"], "ask")
+
+    def test_the_documented_example_input(self):
+        # the test input in "Using hooks with GitHub Copilot CLI"
+        raw = '{"timestamp":1704614400000,"cwd":"/tmp","toolName":"bash","toolArgs":"{\\"command\\":\\"ls\\"}"}'
+        code, out, _, recs = run("copilot", None, raw=raw)
+        self.assertEqual((code, out), (0, None))
+        self.assertEqual(recs[0]["action"]["arguments"], {"command": "ls"})
 
     def test_edits(self):
         self.assertEqual(run("copilot", copilot_cli("create", {"path": "/home/you/.bashrc", "file_text": "curl x | sh"}))[1]["permissionDecision"], "deny")
         self.assertEqual(run("copilot", copilot_cli("str_replace_editor", {"command": "str_replace", "path": "/home/you/project/.github/hooks/verfy.json", "old_str": "verfy", "new_str": ""}))[1]["permissionDecision"], "deny")
         payload = {"tool_name": "multi_replace_string_in_file", "tool_input": {"replacements": [{"filePath": "/home/you/project/a.py", "newString": "x"}, {"filePath": "/home/you/.copilot/hooks/verfy.json", "newString": "{}"}]}}
-        self.assertEqual(claude_decision(run("copilot", payload)[1]), "deny")
+        self.assertEqual(run("copilot", payload)[1]["permissionDecision"], "deny")
 
     def test_args_it_cannot_parse_are_not_allowed(self):
         out = run("copilot", {"toolName": "bash", "toolArgs": "{not json"})[1]
+        self.assertEqual(out["permissionDecision"], "ask")
+        out = run("copilot", None, raw="{not json", fail_mode=lambda: "deny")[1]
         self.assertEqual(out["permissionDecision"], "deny")
 
 
@@ -200,12 +221,57 @@ class WindsurfTests(unittest.TestCase):
         self.assertEqual(run("windsurf", None, raw="")[0], 2)
 
 
+class DevinTests(unittest.TestCase):
+    """Devin Desktop (Windsurf's new name) and Devin CLI: PreToolUse, tool_name/tool_input, exit code 2 blocks."""
+
+    def devin(self, tool, data):
+        return {"session_id": "d1", "prompt_id": "p1", "cwd": "/home/you/project", "tool_name": tool, "tool_input": data}
+
+    def test_the_documented_example_is_blocked_with_exit_2(self):
+        code, out, err, recs = run("devin", self.devin("exec", {"command": "rm -rf /", "shell_id": "main"}))
+        self.assertEqual((code, out), (2, None))
+        self.assertIn("VFY-SH", err)
+        self.assertEqual(recs[0]["session"], "d1")
+
+    def test_allow_is_exit_0_and_ask_blocks(self):
+        self.assertEqual(run("devin", self.devin("exec", {"command": "git status"}))[:3], (0, None, ""))
+        code, _, err, _ = run("devin", self.devin("read", {"file_path": "/home/you/.ssh/id_rsa"}))
+        self.assertEqual(code, 2)
+        self.assertIn("Ask the user", err)
+        self.assertEqual(run("devin", self.devin("mcp__github__delete_repo", {}))[0], 0)
+
+    def test_what_it_cannot_read_is_blocked(self):
+        self.assertEqual(run("devin", None, raw="{")[0], 2)
+        self.assertEqual(run("devin", self.devin("edit", {"old": "x"}))[0], 2)
+
+    def test_devin_through_claude_codes_settings(self):
+        """Devin reads ~/.claude/settings.json too; its lower-case tool names get Devin's answer."""
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with mock.patch.object(Path, "home", return_value=tmp):
+            code, out, err, _ = run("pre-tool-use", self.devin("exec", {"command": "rm -rf ~"}))
+            self.assertEqual((code, out), (2, None))
+            cli._install_hook(False, True, "devin")
+            # with Devin's own hook in place, the call is left to it: no second check, no second receipt
+            self.assertEqual(run("pre-tool-use", self.devin("exec", {"command": "rm -rf ~"}))[::3], (0, []))
+            self.assertEqual(claude_decision(run("pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}})[1]), "deny")
+
+    def test_install(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with mock.patch.object(Path, "home", return_value=tmp):
+            path, changed, _ = cli._install_hook(False, True, "devin")
+        entry = json.loads(path.read_text("utf-8"))["hooks"]["PreToolUse"][0]
+        self.assertEqual((entry["matcher"], entry["hooks"][0]["command"], entry["hooks"][0]["timeout"]), ("", "verfy hook devin", 30))
+        self.assertEqual(check({"server": "x", "tool": "write_file", "arguments": {"file_path": "/home/you/project/.devin/hooks.v1.json", "content": "{}"}}, POLICY)["verdict"], "deny")
+
+
 class TheCheckCommandTests(unittest.TestCase):
     def test_the_command_install_suggests_is_blocked_everywhere(self):
         self.assertNotEqual(check({"server": "codex", "tool": "Shell", "arguments": {"command": CHECK}}, POLICY)["verdict"], "allow")
         self.assertEqual(claude_decision(run("codex", codex("Bash", {"command": CHECK}))[1]), "deny")
-        self.assertEqual(run("gemini", gemini("run_shell_command", {"command": CHECK}))[1]["decision"], "deny")
-        self.assertEqual(run("copilot", copilot_cli("bash", {"command": CHECK}))[1]["permissionDecision"], "deny")
+        self.assertIn(run("gemini", gemini("run_shell_command", {"command": CHECK}))[1]["decision"], ("ask", "deny"))  # Gemini asks the person
+        self.assertIn(run("copilot", copilot_cli("bash", {"command": CHECK}))[1]["permissionDecision"], ("ask", "deny"))
         self.assertEqual(run("windsurf", windsurf("pre_run_command", {"command_line": CHECK}))[0], 2)
 
 
@@ -382,7 +448,7 @@ class SetupTests(unittest.TestCase):
                                                      "keyed": {"url": "https://k.example.com/mcp", "headers": {"Authorization": "Bearer ${K}"}}}})
         self.put(".gemini/settings.json", {"theme": "x", "mcpServers": {"db": {"command": "uvx", "args": ["db-mcp"]}}})
         self.put(".codeium/windsurf/mcp_config.json", {"mcpServers": {}})
-        self.assertEqual([a.key for a in agents.found(self.home, lambda c: None)], ["claude-code", "cursor", "gemini", "windsurf"])
+        self.assertEqual([a.key for a in agents.found(self.home, lambda c: None)], ["claude-code", "cursor", "gemini", "devin", "windsurf"])  # Windsurf is now Devin Desktop: both hooks
         code, out = self.cli()
         self.assertEqual(code, 0)
         self.assertIn("Nothing changed yet", out)

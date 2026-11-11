@@ -130,7 +130,7 @@ def cursor_answer(out: dict | None, event: Any) -> dict:
 # ------------------------------------------------- Codex, Gemini, Copilot, Windsurf
 
 # tool names after lower-casing and dropping "_", "-" and spaces
-SHELL_TOOLS = {"bash", "powershell", "shell", "shellcommand", "execcommand", "localshell", "unifiedexec", "runshellcommand",
+SHELL_TOOLS = {"bash", "exec", "powershell", "shell", "shellcommand", "execcommand", "localshell", "unifiedexec", "runshellcommand",
                "runinterminal", "runcommand", "terminal", "containerexec"}
 READ_TOOLS = {"view", "read", "readfile", "notebookread"}
 WRITE_TOOLS = {"create", "createfile", "write", "writefile", "edit", "editfile", "multiedit", "replace", "strreplace",
@@ -362,20 +362,18 @@ def gemini_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | No
     if out is None:
         return {}, None, 0
     verdict, reason = _decision(out)
-    reason = (NO_ASK.format(agent="Gemini CLI") if verdict == "ask" else "") + reason
-    return {"decision": "deny", "reason": reason, "systemMessage": reason}, None, 0
+    # Gemini CLI turns "ask" into its own confirmation prompt (scheduler: hookDecision 'ask' -> ASK_USER), showing systemMessage
+    return {"decision": verdict, "reason": reason, "systemMessage": reason}, None, 0
 
 
 def copilot_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
-    """Both shapes in one answer: Copilot CLI reads the top-level fields, VS Code reads hookSpecificOutput.
-    VS Code can ask a person; the CLI cannot, so for the CLI (or input it could not read) an ask becomes a deny."""
+    """One top-level JSON object, which Copilot CLI and VS Code's Copilot runtime both read. "ask" is sent as it is:
+    an interactive session asks the person, and where nobody can answer (autopilot, the cloud agent) Copilot
+    treats it as deny. A hook that exits non-zero also denies the call (GitHub's hooks reference)."""
     if out is None:
         return None, None, 0
     verdict, reason = _decision(out)
-    vscode = isinstance(payload, dict) and "tool_name" in payload and "toolName" not in payload
-    if verdict == "ask" and not vscode:
-        verdict, reason = "deny", NO_ASK.format(agent="Copilot CLI") + reason
-    return {"permissionDecision": verdict, "permissionDecisionReason": reason, **_output(verdict, reason)}, None, 0
+    return {"permissionDecision": verdict, "permissionDecisionReason": reason}, None, 0
 
 
 def windsurf_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
@@ -384,6 +382,33 @@ def windsurf_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | 
         return None, None, 0
     verdict, reason = _decision(out)
     return None, (NO_ASK.format(agent="Windsurf") if verdict == "ask" else "") + reason, 2
+
+
+# Devin Desktop (Windsurf's new name since 2 June 2026) and Devin CLI share one hook format: PreToolUse with tool_name
+# and tool_input, block with exit code 2 (other exit codes, a timeout or unreadable output do not block), no "ask".
+# Their tool names are lower case; Claude Code's are not, which is how a Devin call through ~/.claude/settings.json
+# (Devin reads it by default) is told apart. https://docs.devin.ai/cli/extensibility/hooks/lifecycle-hooks
+DEVIN_TOOLS = {"exec", "read", "write", "edit", "apply_patch", "notebook_read", "notebook_edit", "grep", "glob", "webfetch",
+               "get_output", "write_to_process", "kill_shell", "todo_write", "exit_plan_mode", "skill", "run_subagent",
+               "read_subagent", "request_scope", "mcp_list_servers", "mcp_list_tools", "mcp_call_tool", "mcp_read_resource"}
+
+
+def devin_action(payload: dict) -> dict | list[dict]:
+    return tool_action("devin", str(payload.get("tool_name") or ""), payload.get("tool_input"))
+
+
+def devin_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
+    if out is None:
+        return None, None, 0
+    verdict, reason = _decision(out)
+    return None, (NO_ASK.format(agent="Devin") if verdict == "ask" else "") + reason, 2
+
+
+def devin_hook_installed(home: Path | None = None) -> bool:
+    try:
+        return "verfy hook devin" in devin_config_path(False, home=home).read_text("utf-8-sig")
+    except OSError:
+        return False
 
 
 def _output(verdict: str, reason: str) -> dict:
@@ -463,6 +488,11 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
         if len(raw) > MAX_STDIN:
             raise ValueError("hook input is larger than 4 MB")
         payload = prepare(json.loads(raw.removeprefix("\ufeff")))  # Windows PowerShell adds a BOM when its output encoding is UTF-8
+        if event == "pre-tool-use" and isinstance(payload, dict) and payload.get("tool_name") in DEVIN_TOOLS:
+            # Devin reading Claude Code's settings: answer the way Devin reads, or leave it to Devin's own Verfy hook
+            if devin_hook_installed():
+                return 0
+            _prepare, to_action, answer = AGENTS["devin"]
         out = run_pre_tool_use(payload, get_policy=get_policy, record=record, home=home, to_action=to_action)
     except Exception as e:  # noqa: BLE001 - every failure must become ask/deny, never allow
         mode = "ask"
@@ -487,6 +517,7 @@ AGENTS: dict[str, tuple[Callable[[Any], dict], Callable[[dict], Any], Callable[[
     "gemini": (_payload, gemini_action, gemini_answer),
     "copilot": (copilot_payload, copilot_action, copilot_answer),
     "windsurf": (windsurf_payload, windsurf_action, windsurf_answer),
+    "devin": (_payload, devin_action, devin_answer),
 }
 
 
@@ -586,6 +617,19 @@ def with_windsurf_hook(config: dict) -> tuple[dict, bool]:
     return out, changed
 
 
+def devin_config_path(project: bool, cwd: Path | None = None, home: Path | None = None) -> Path:
+    """Devin's config with a "hooks" key: ./.devin/config.json, or ~/.config/devin/config.json (%APPDATA%\\devin on Windows)."""
+    if project:
+        return (cwd or Path.cwd()) / ".devin" / "config.json"
+    home = home or Path.home()
+    return home / "AppData" / "Roaming" / "devin" / "config.json" if sys.platform == "win32" else home / ".config" / "devin" / "config.json"
+
+
+def with_devin_hook(config: dict) -> tuple[dict, bool]:
+    """PreToolUse with an empty matcher (every tool) under "hooks" in Devin's config. Devin counts the timeout in seconds."""
+    return with_hook(config, entry={"matcher": "", "hooks": [{"type": "command", "command": "verfy hook devin", "timeout": 30}]})
+
+
 def _under(home_part: tuple[str, ...], project_part: tuple[str, ...]) -> Callable[..., Path]:
     def path(project: bool, cwd: Path | None = None) -> Path:
         return (cwd or Path.cwd()).joinpath(*project_part) if project else Path.home().joinpath(*home_part)
@@ -600,6 +644,8 @@ INSTALL: dict[str, tuple[str, Callable[..., Path], Callable[[dict], tuple[dict, 
     "gemini": ("Gemini CLI", _under((".gemini", "settings.json"), (".gemini", "settings.json")), with_gemini_hook, (".gemini",)),
     "copilot": ("Copilot", _under((".copilot", "hooks", "verfy.json"), (".github", "hooks", "verfy.json")), with_copilot_hook, (".copilot",)),
     "windsurf": ("Windsurf", _under((".codeium", "windsurf", "hooks.json"), (".windsurf", "hooks.json")), with_windsurf_hook, (".codeium", "windsurf")),
+    "devin": ("Devin Desktop", devin_config_path, with_devin_hook, (".devin",)),
 }
 COMMANDS = {"claude-code": PRE_TOOL_COMMAND, "cursor": CURSOR_COMMAND, "codex": "verfy hook codex", "gemini": "verfy hook gemini",
-            "copilot": "verfy hook copilot", "windsurf": "verfy hook windsurf"}
+            "copilot": "verfy hook copilot", "windsurf": "verfy hook windsurf",
+            "devin": "verfy hook devin"}

