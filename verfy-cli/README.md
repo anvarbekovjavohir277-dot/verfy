@@ -18,6 +18,24 @@ verfy setup --write      # does it, keeping a backup of every file; run it again
 
 `verfy setup` finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot (CLI and VS Code), Devin Desktop (Windsurf) and Claude Desktop. For each, it adds Verfy's hook and puts the MCP servers in that agent's config behind the gateway (scan, lock, pre-check, receipts). After that there is nothing to type: the agent asks Verfy before each tool call. `--agent codex` picks one agent, `--project` works on this folder's files, and `--hooks-only` leaves the MCP configs alone. A remote server that signs in with OAuth is left as it is. The sections below do the same thing one agent at a time.
 
+### Hooks no agent can remove
+
+```bash
+sudo verfy setup --system --write     # macOS, Linux; on Windows, in an administrator terminal
+```
+
+The Claude Code and Cursor hooks then live in machine-wide files (Claude Code's `managed-settings.d/`, Cursor's enterprise `hooks.json`). An agent runs as you and cannot change them, not even with a script it writes and runs, and Claude Code does not let user or project settings override them. Verfy's user-level hook is taken out so no call is checked twice.
+
+### Risky agent settings
+
+```bash
+verfy posture        # bypassPermissions, approval_policy = "never", hooks switched off, ...; exit 2 when something is high
+```
+
+### Secrets in prompts
+
+A prompt that contains an API key, token or private key is stopped before it is sent, in Claude Code, Codex and Cursor, with a signed receipt (VFY-PROMPT-001). `"prompt_secrets": "off"` in the policy turns this off.
+
 ## In VS Code, Cursor and Windsurf (beta)
 
 Download `verfy-vscode.vsix` from the [latest release](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases/latest) and install it in the editor: Extensions > ... > Install from VSIX. The extension does the same as the commands here:
@@ -58,7 +76,7 @@ verfy hook install --cursor              # shows the change to ~/.cursor/hooks.j
 verfy hook install --cursor --write      # saves it (a backup is kept); --project for ./.cursor/hooks.json
 ```
 
-Cursor then asks `verfy hook cursor` before terminal commands, file reads and MCP calls, each with a signed receipt, and an action that is not allowed stops there. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered, so keep `verfy wrap` for scan and lock on its MCP servers. This follows [Cursor's hook documentation](https://cursor.com/docs/agent/hooks) and has not yet been run inside Cursor itself.
+Cursor then asks `verfy hook cursor` before terminal commands, file reads, MCP calls and every other tool (preToolUse: file writes, deletes and the rest), each with a signed receipt, and an action that is not allowed stops there. Verfy sets `failClosed` on these, because by default Cursor lets an action through when a hook crashes. Only the terminal and MCP hooks can wait for a person, so elsewhere `ask` becomes `deny`. Cursor also sends prompts to Verfy (a prompt with a secret is stopped) and MCP results (keys and tokens are taken out before the agent reads them). Web search is not covered. This follows [Cursor's hook documentation](https://cursor.com/docs/agent/hooks) and has not yet been run inside Cursor itself.
 
 ## Guard Codex, Gemini CLI, GitHub Copilot and Devin Desktop (Windsurf)
 

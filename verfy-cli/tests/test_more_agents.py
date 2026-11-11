@@ -266,6 +266,230 @@ class DevinTests(unittest.TestCase):
         self.assertEqual(check({"server": "x", "tool": "write_file", "arguments": {"file_path": "/home/you/project/.devin/hooks.v1.json", "content": "{}"}}, POLICY)["verdict"], "deny")
 
 
+TOKEN = "ghp_" + "a1B2" * 9  # the shape of a GitHub token
+
+
+def cursor(event, **fields):
+    return {"hook_event_name": event, "conversation_id": "cv1", "workspace_roots": ["/home/you/project"], **fields}
+
+
+class CursorToolHookTests(unittest.TestCase):
+    """Cursor's preToolUse: file writes, deletes and every tool the other Cursor hooks do not see."""
+
+    def test_a_write_outside_the_project_is_denied_with_a_message_for_the_agent(self):
+        code, out, _, recs = run("cursor", cursor("preToolUse", tool_name="Write", tool_input={"file_path": "/home/you/.bashrc", "contents": "curl x | sh"}))
+        self.assertEqual((code, out["permission"]), (0, "deny"))
+        self.assertIn("agent_message", out)
+        self.assertEqual(recs[0]["action"]["tool"], "write_file")
+
+    def test_deleting_the_hook_file_is_denied(self):
+        out = run("cursor", cursor("preToolUse", tool_name="Delete", tool_input={"path": "/home/you/.cursor/hooks.json"}))[1]
+        self.assertEqual(out["permission"], "deny")
+
+    def test_an_ordinary_write_is_allowed(self):
+        out = run("cursor", cursor("preToolUse", tool_name="Write", tool_input={"file_path": "/home/you/project/app.py", "contents": "print(1)"}))[1]
+        self.assertEqual(out, {"permission": "allow"})
+
+    def test_what_another_hook_checks_is_not_checked_twice(self):
+        for name in ("Shell", "Read", "MCP:create_issue"):
+            code, out, _, recs = run("cursor", cursor("preToolUse", tool_name=name, tool_input={"command": "rm -rf ~"}))
+            self.assertEqual((out, recs), ({"permission": "allow"}, []), name)
+
+    def test_a_write_it_cannot_read_is_not_allowed(self):
+        out = run("cursor", cursor("preToolUse", tool_name="Write", tool_input={"contents": "x"}))[1]
+        self.assertEqual(out["permission"], "deny")
+
+
+class PromptGuardTests(unittest.TestCase):
+    def test_claude_code_blocks_a_prompt_with_a_secret_and_signs_a_receipt(self):
+        code, out, _, recs = run("prompt", {"session_id": "s9", "cwd": "/home/you/project", "hook_event_name": "UserPromptSubmit", "prompt": f"use this token {TOKEN} to push"})
+        self.assertEqual((code, out["decision"]), (0, "block"))
+        self.assertIn("GitHub", out["reason"])
+        self.assertNotIn(TOKEN, out["reason"])
+        self.assertEqual(recs[0]["decision"]["findings"][0]["rule"], "VFY-PROMPT-001")
+        self.assertEqual(recs[0]["outcome"]["status"], "blocked")
+
+    def test_an_ordinary_prompt_goes_through_quietly(self):
+        self.assertEqual(run("prompt", {"session_id": "s9", "prompt": "fix the failing test in app.py"})[:2], (0, None))
+
+    def test_cursor_stops_the_prompt_before_it_is_sent(self):
+        out = run("cursor", cursor("beforeSubmitPrompt", prompt=f"here is my key {TOKEN}", attachments=[]))[1]
+        self.assertEqual(out["continue"], False)
+        self.assertIn("prompt_secrets", out["user_message"])
+        self.assertEqual(run("cursor", cursor("beforeSubmitPrompt", prompt="refactor this"))[1], {"continue": True})
+
+    def test_it_can_be_turned_off(self):
+        global POLICY
+        saved = POLICY
+        try:
+            POLICY = load_policy({"home": "/home/you", "workspace": "/home/you/project", "prompt_secrets": "off"})
+            self.assertEqual(run("prompt", {"prompt": f"token {TOKEN}"})[1], None)
+        finally:
+            POLICY = saved
+        with self.assertRaises(ValueError):
+            load_policy({"prompt_secrets": "maybe"})
+
+    def test_a_broken_input_never_stops_a_prompt(self):
+        with mock.patch.object(hook, "scan_secrets", side_effect=RuntimeError("boom")):
+            self.assertEqual(run("cursor", cursor("beforeSubmitPrompt", prompt="hi"))[1], {"continue": True})
+
+    def test_the_default_policy_hash_did_not_change(self):
+        self.assertNotIn("prompt_secrets", load_policy({}))
+
+
+class CursorOutputTests(unittest.TestCase):
+    def test_a_secret_in_an_mcp_result_is_hidden(self):
+        raw = json.dumps({"content": [{"type": "text", "text": f"deploy key: {TOKEN}"}]})
+        out = run("cursor", cursor("postToolUse", tool_name="MCP:get_secret", tool_input={}, tool_output=raw))[1]
+        cleaned = json.loads(out["updated_mcp_tool_output"])
+        self.assertNotIn(TOKEN, json.dumps(cleaned))
+        self.assertIn("[REDACTED:", cleaned["content"][0]["text"])
+
+    def test_a_clean_result_is_left_alone(self):
+        self.assertEqual(run("cursor", cursor("postToolUse", tool_name="MCP:list", tool_output="all good"))[1], {})
+
+
+class ClaudeInstallTests(unittest.TestCase):
+    def test_the_prompt_guard_comes_with_the_hook(self):
+        settings, changed = hook.INSTALL["claude-code"][2]({})
+        self.assertTrue(changed)
+        self.assertEqual(settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"], "verfy hook prompt")
+        self.assertFalse(hook.INSTALL["claude-code"][2](settings)[1])
+        # an install from before the prompt guard still counts as on, and setup adds the guard
+        older, _ = hook.with_hook({})
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = tmp / "settings.json"
+        path.write_text(json.dumps(older), "utf-8")
+        self.assertEqual(cli._hook_state(path, "claude-code"), "on")
+
+
+class PostureTests(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.cwd = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.addCleanup(shutil.rmtree, self.cwd, True)
+
+    def put(self, rel, data):
+        p = self.home / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(data if isinstance(data, str) else json.dumps(data), "utf-8")
+
+    def settings(self):
+        from verfy import posture
+        return {(f["agent"], f["setting"].split(" ")[0], f["severity"]) for f in posture.check(self.home, self.cwd)}
+
+    def test_a_clean_machine_has_nothing_to_report(self):
+        from verfy import posture
+        self.put(".claude/settings.json", {"permissions": {"defaultMode": "default", "allow": ["Bash(npm test)"]}})
+        self.assertEqual(posture.check(self.home, self.cwd), [])
+        self.assertEqual(posture.worst([]), 0)
+
+    def test_claude_code(self):
+        self.put(".claude/settings.json", {"permissions": {"defaultMode": "bypassPermissions", "allow": ["Bash(*)"]}, "disableAllHooks": True, "enableAllProjectMcpServers": True})
+        self.assertEqual(self.settings(), {("Claude Code", "permissions.defaultMode", "high"), ("Claude Code", "disableAllHooks", "high"),
+                                           ("Claude Code", "permissions.allow", "medium"), ("Claude Code", "enableAllProjectMcpServers", "medium")})
+
+    @unittest.skipIf(sys.version_info < (3, 11), "TOML needs Python 3.11")
+    def test_codex_also_in_a_profile(self):
+        self.put(".codex/config.toml", 'approval_policy = "on-request"\n[profiles.fast]\napproval_policy = "never"\nsandbox_mode = "danger-full-access"\n[features]\nhooks = false\n')
+        self.assertEqual(self.settings(), {("Codex CLI", "profiles.fast.approval_policy", "high"), ("Codex CLI", "profiles.fast.sandbox_mode", "high"), ("Codex CLI", "[features]", "high")})
+
+    def test_gemini_and_cursor(self):
+        from verfy import posture
+        self.put(".gemini/settings.json", {"hooksConfig": {"disabled": ["verfy"]}, "general": {"defaultApprovalMode": "auto_edit"}})
+        self.put(".cursor/hooks.json", {"version": 1, "hooks": {"beforeShellExecution": [{"command": "verfy hook cursor"}], "beforeSubmitPrompt": [{"command": "verfy hook cursor"}]}})
+        found = self.settings()
+        self.assertIn(("Gemini CLI", "hooksConfig.disabled", "high"), found)
+        self.assertIn(("Gemini CLI", "general.defaultApprovalMode", "low"), found)
+        self.assertIn(("Cursor", "beforeShellExecution:", "medium"), found)
+        self.assertNotIn(("Cursor", "beforeSubmitPrompt:", "medium"), found)  # the prompt guard does not fail closed on purpose
+        self.assertEqual(posture.worst(posture.check(self.home, self.cwd)), 2)
+
+    def test_the_command_and_doctor(self):
+        from contextlib import redirect_stdout
+        self.put(".claude/settings.json", {"disableAllHooks": True})
+        out = io.StringIO()
+        with mock.patch.object(Path, "home", return_value=self.home), mock.patch.object(Path, "cwd", return_value=self.cwd), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(["posture"]), 2)
+            self.assertEqual(json.loads(self._json())["findings"][0]["setting"], "disableAllHooks = true")
+        self.assertIn("disableAllHooks", out.getvalue())
+
+    def _json(self):
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out):
+            cli.main(["posture", "--json"])
+        return out.getvalue()
+
+
+class SystemHookTests(unittest.TestCase):
+    """verfy setup --system: machine-wide hooks for Claude Code and Cursor, written under a test folder here."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.addCleanup(shutil.rmtree, self.home, True)
+
+    def test_files_land_where_each_agent_reads_them(self):
+        from verfy import agents
+        for plat, claude_file, cursor_file in (("win32", "Program Files/ClaudeCode/managed-settings.d/50-verfy.json", "ProgramData/Cursor/hooks.json"),
+                                               ("linux", "etc/claude-code/managed-settings.d/50-verfy.json", "etc/cursor/hooks.json"),
+                                               ("darwin", "Library/Application Support/ClaudeCode/managed-settings.d/50-verfy.json", "Library/Application Support/Cursor/hooks.json")):
+            paths = [i["path"].as_posix() for i in agents.system_plan(plat, "/usr/local/bin/verfy", root=self.root)]
+            self.assertTrue(paths[0].endswith(claude_file), (plat, paths[0]))
+            self.assertTrue(paths[1].endswith(cursor_file), (plat, paths[1]))
+
+    def test_write_then_take_out_the_user_level_copy_and_keep_the_rest(self):
+        from verfy import agents
+        user = self.home / ".claude" / "settings.json"
+        user.parent.mkdir(parents=True)
+        mine = {"matcher": "Bash", "hooks": [{"type": "command", "command": "./lint.sh"}]}
+        settings, _ = hook.with_claude_hooks({"model": "opus"})
+        settings["hooks"]["PreToolUse"].append(mine)
+        user.write_text(json.dumps(settings), "utf-8")
+        items = agents.system_plan("linux", "/usr/local/bin/verfy", root=self.root)
+        done = agents.apply_system(items, agents.user_hook_cleanup(self.home))
+        claude_sys = json.loads(items[0]["path"].read_text("utf-8"))
+        self.assertEqual(claude_sys["hooks"]["PreToolUse"][0]["hooks"][0]["command"], "/usr/local/bin/verfy hook pre-tool-use")
+        self.assertEqual(claude_sys["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"], "/usr/local/bin/verfy hook prompt")
+        cursor_sys = json.loads(items[1]["path"].read_text("utf-8"))
+        self.assertEqual(cursor_sys["hooks"]["preToolUse"][0]["command"], "/usr/local/bin/verfy hook cursor")
+        left = json.loads(user.read_text("utf-8"))
+        self.assertEqual(left["model"], "opus")
+        self.assertEqual(left["hooks"]["PreToolUse"], [mine])
+        self.assertEqual(left["hooks"]["UserPromptSubmit"], [])
+        self.assertTrue(user.with_suffix(".json.verfy-backup").exists())
+        self.assertTrue(all(i["state"] in ("add", "on") for i in done))
+        # running it again changes nothing
+        self.assertEqual([i["state"] for i in agents.system_plan("linux", "/usr/local/bin/verfy", root=self.root)], ["on", "on"])
+
+    def test_without_admin_rights_the_user_level_hook_stays(self):
+        from verfy import agents
+        user = self.home / ".cursor" / "hooks.json"
+        user.parent.mkdir(parents=True)
+        user.write_text(json.dumps(hook.with_cursor_hook({})[0]), "utf-8")
+        items = agents.system_plan("linux", "/usr/local/bin/verfy", root=self.root)
+        with mock.patch("pathlib.Path.write_text", side_effect=PermissionError("denied")):
+            done = agents.apply_system(items, agents.user_hook_cleanup(self.home))
+        self.assertIn("administrator", done[0]["error"])
+        self.assertEqual(done[-1]["state"], "skipped")
+        self.assertIn("verfy hook cursor", user.read_text("utf-8"))
+
+    def test_no_agent_may_edit_a_machine_wide_hook_file(self):
+        for home, path in (("/home/you", "/etc/claude-code/managed-settings.d/50-verfy.json"), ("/home/you", "/etc/cursor/hooks.json"),
+                           ("C:/Users/you", "C:/Program Files/ClaudeCode/managed-settings.d/50-verfy.json"), ("C:/Users/you", "C:/ProgramData/Cursor/hooks.json")):
+            pol = load_policy({"home": home, "workspace": home + "/project"})
+            self.assertEqual(check({"server": "x", "tool": "write_file", "arguments": {"file_path": path, "content": "{}"}}, pol)["verdict"], "deny", path)
+
+    def test_a_path_with_a_space_runs_verfy_from_path(self):
+        from verfy import agents
+        self.assertEqual(agents.system_command("C:\\Program Files\\verfy\\verfy.exe"), "verfy")
+        self.assertEqual(agents.system_command(None), "verfy")
+
+
 class TheCheckCommandTests(unittest.TestCase):
     def test_the_command_install_suggests_is_blocked_everywhere(self):
         self.assertNotEqual(check({"server": "codex", "tool": "Shell", "arguments": {"command": CHECK}}, POLICY)["verdict"], "allow")

@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from . import __version__
 from . import agentfiles
 from . import agents as agentlib
+from . import posture as posturelib
 from . import bridge as bridges
 from . import imports
 from . import discover as cfgscan
@@ -1445,10 +1446,15 @@ def _short(path: Path) -> str:
 
 
 def _setup_line(item: dict) -> str:
-    what = {"hook": "hook", "mcp": "MCP", "terminal": "term"}[item["kind"]]
+    what = {"hook": "hook", "mcp": "MCP", "terminal": "term", "system": "all", "unhook": "user"}[item["kind"]]
     state = item["state"]
-    if state == "error":
+    if state in ("error", "skipped"):
         note = item["error"]
+    elif item["kind"] == "system":
+        note = ("Verfy's hooks are already machine-wide" if state == "on"
+                else "add Verfy's hooks for every user of this computer, in a file no agent running as you can change")
+    elif item["kind"] == "unhook":
+        note = "no user-level Verfy hook to take out" if state == "on" else "take out Verfy's own user-level hook, so each call is not checked twice"
     elif item["kind"] == "terminal":
         on = item["on"]
         note = (("the terminal already opens inside the sandbox" if on else "the terminal is not sandboxed") if state == "on"
@@ -1476,8 +1482,12 @@ def _print_setup_plan(items: list[dict]) -> None:
 def _print_setup_done(items: list[dict]) -> None:
     for item in items:
         label = item["agent"].label
-        if item["state"] == "error":
+        if item["state"] in ("error", "skipped"):
             print(f"{label:<13} {_short(item['path'])}  (not changed: {item['error']})")
+        elif item.get("done") and item["kind"] == "system":
+            print(f"{label:<13} {item['path']}  (machine-wide hooks written; a backup of an older file is kept)")
+        elif item.get("done") and item["kind"] == "unhook":
+            print(f"{label:<13} {_short(item['path'])}  (Verfy's user-level hook taken out, the machine-wide one runs instead; a backup is kept)")
         elif item.get("done") and item["kind"] == "terminal":
             print(f"{label:<13} {_short(item['path'])}  ({'terminal opens inside the sandbox' if item['on'] else 'sandboxed terminal removed'}; a backup is kept)")
         elif item.get("done") and item["kind"] == "hook":
@@ -1497,8 +1507,28 @@ def _print_setup_done(items: list[dict]) -> None:
         print(f"              Restart the agents that are open. {CHECK_NOTE}")
 
 
+def cmd_posture(args) -> int:
+    found = posturelib.check(Path.home(), Path.cwd())
+    if args.json:
+        print(json.dumps(posturelib.as_json(found), indent=2, ensure_ascii=False))
+        return posturelib.worst(found)
+    if not found:
+        print("No risky setting found in the agents' configs (Claude Code, Codex CLI, Gemini CLI, Cursor).")
+        print("Not seen from here: Gemini's --yolo and Claude Code's --dangerously-skip-permissions, which are command-line flags,")
+        print("and Cursor's auto-run setting, which Cursor keeps in its own database.")
+        return 0
+    for f in found:
+        color = "31;1" if f["severity"] == "high" else ("33" if f["severity"] == "medium" else "0")
+        print(f"{c(f['severity'].upper(), color):<8} {f['agent']}: {f['setting']}")
+        print(f"         {f['why']}")
+        print(f"         Fix: {f['fix']}  ({_short(Path(f['path']))})")
+    return posturelib.worst(found)
+
+
 def cmd_setup(args) -> int:
     home, cwd = Path.home(), Path.cwd()
+    if args.system:
+        return _setup_system(args)
     if args.sandbox_terminal:
         items = agentlib.terminal_plan(home, args.sandbox_terminal == "on", sys.platform, shutil.which("verfy") or "verfy", shutil.which("wsl.exe"))
         if not items:
@@ -1519,6 +1549,36 @@ def cmd_setup(args) -> int:
     if args.hooks_only:
         items = [i for i in items if i["kind"] == "hook"]
     return _setup_finish(args, items)
+
+
+def _invoking_home() -> Path:
+    """The home of the person running verfy, also under sudo, where Path.home() can be root's."""
+    who = os.environ.get("SUDO_USER")
+    if who and os.name == "posix":
+        try:
+            import pwd
+            return Path(pwd.getpwnam(who).pw_dir)
+        except (ImportError, KeyError):
+            pass
+    return Path.home()
+
+
+def _setup_system(args) -> int:
+    """Machine-wide hooks for Claude Code and Cursor, which an agent running as you cannot change or remove."""
+    items = agentlib.system_plan(sys.platform, shutil.which("verfy"))
+    cleanup = agentlib.user_hook_cleanup(_invoking_home())
+    if not args.write:
+        _print_setup_plan(items + cleanup)
+        todo = [i for i in items + cleanup if i["state"] == "add"]
+        print("\n" + ("Nothing changed yet. Run `verfy setup --system --write` " + ("as an administrator" if os.name == "nt" else "with sudo")
+                      + " to do this; a backup of every changed file is kept." if todo else "Verfy's hooks are already machine-wide here."))
+        return 0
+    done = agentlib.apply_system(items, cleanup)
+    _print_setup_done(done)
+    if any(i.get("done") for i in done if i["kind"] == "system"):
+        print("              Restart Claude Code and Cursor. An agent running as you cannot change these files; one started as an")
+        print("              administrator, or a person with admin rights, still can.")
+    return 1 if any(i["state"] in ("error", "skipped") for i in done) else 0
 
 
 def _setup_finish(args, items: list[dict]) -> int:
@@ -1586,7 +1646,8 @@ def _hook_state(path: Path, agent: str) -> str:
         _, missing = hooks.INSTALL[agent][2](current)
     except (OSError, ValueError):
         return "unreadable"
-    return "off" if missing else "on"
+    # on when Verfy's hook is there, also from an older Verfy that added fewer hooks (verfy setup --write adds the rest)
+    return "on" if not missing or hooks.COMMANDS[agent] in json.dumps(current) else "off"
 
 
 def cmd_doctor(args) -> int:
@@ -1628,8 +1689,16 @@ def cmd_doctor(args) -> int:
             problems.append(f"{path} is not valid JSON, so the agent may not run the hook")
     user_claude = _hook_state(hooks.settings_path(False), "claude-code")
     project_claude = _hook_state(hooks.settings_path(True), "claude-code")
-    if claude_here and "on" not in (user_claude, project_claude):
-        problems.append("Claude Code is installed but no Verfy hook is set, so its tool calls are not checked. Fix: verfy hook install --write")
+    machine = agentlib.system_hooked("claude-code")
+    if machine:
+        print(f"Claude Code   hook on, machine-wide  ({machine})")
+    if claude_here and "on" not in (user_claude, project_claude) and not machine:
+        problems.append("Claude Code is installed but no Verfy hook is set, so its tool calls are not checked. Fix: verfy setup --write")
+    risky = posturelib.check(Path.home(), Path.cwd())
+    print(f"Agent settings {posturelib.summary(risky)}")
+    for f in risky:
+        if f["severity"] == "high" and "hook" in f["setting"].lower():
+            problems.append(f"{f['agent']}: {f['setting']} in {f['path']}: {f['why']} Fix: {f['fix']}")
     lock_p = lock_file(args)
     if lock_p.exists():
         try:
@@ -2043,11 +2112,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
     p.set_defaults(fn=cmd_doctor)
 
+    p = sub.add_parser("posture", help="risky settings in each agent's own config (bypass modes, hooks switched off, no sandbox); changes nothing")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_posture)
+
     p = sub.add_parser("setup", help="set Verfy up for every coding agent found here at once: hooks and MCP gateway")
     p.add_argument("--write", action="store_true", help="make the changes (without it, only show them); a backup of every file is kept")
     p.add_argument("--project", action="store_true", help="this project's files (.claude, .codex, .gemini, .github/hooks, .mcp.json ...) instead of your home folder")
     p.add_argument("--agent", action="append", choices=[a.key for a in agentlib.AGENTS], help="only this agent, even if it was not found (repeat for more)")
     p.add_argument("--hooks-only", action="store_true", help="add the hooks and leave the MCP configs as they are")
+    p.add_argument("--system", action="store_true", help="put the Claude Code and Cursor hooks in machine-wide files that an agent running as you cannot change (needs administrator rights or sudo)")
     p.add_argument("--sandbox-terminal", choices=["on", "off"], help="make the terminal of VS Code, Cursor and Windsurf open inside the sandbox, so their AI agents' commands run there (beta; on Windows through WSL2)")
     p.set_defaults(fn=cmd_setup)
 

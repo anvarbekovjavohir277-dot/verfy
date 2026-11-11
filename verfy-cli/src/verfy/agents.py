@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -55,6 +56,18 @@ def found(home: Path, which: Callable[[str], str | None] | None = None) -> list[
     return [a for a in AGENTS if any(home.joinpath(*m).exists() for m in a.marks) or any(which(c) for c in a.commands)]
 
 
+def system_hooked(agent: str, platform: str | None = None) -> Path | None:
+    """The machine-wide file that already runs Verfy's hook for this agent, if there is one."""
+    paths = SYSTEM_FILES.get(agent)
+    if not paths:
+        return None
+    path = Path(paths[_platform(platform or sys.platform)])
+    try:
+        return path if path.is_file() and "verfy" in path.read_text("utf-8-sig") and " hook " in path.read_text("utf-8-sig") else None
+    except OSError:
+        return None
+
+
 def plan(agents: list[Agent], home: Path, cwd: Path, project: bool, exe: str) -> list[dict]:
     """What setup would change, one entry per file: {"agent", "kind": "hook"|"mcp", "path", "state", "text", ...}."""
     out = []
@@ -64,7 +77,10 @@ def plan(agents: list[Agent], home: Path, cwd: Path, project: bool, exe: str) ->
         return pending[path] if path in pending else path.read_text("utf-8-sig")
 
     for a in agents:
-        if a.hook:
+        machine = None if project else system_hooked(a.key)
+        if a.hook and machine:
+            out.append({"agent": a, "kind": "system", "path": machine, "state": "on"})  # no second, user-level copy
+        elif a.hook:
             _label, where, add, _dirs = hooks.INSTALL[a.hook]
             path = where(project, cwd) if project else _home_path(where, home)
             item = {"agent": a, "kind": "hook", "path": path}
@@ -213,3 +229,144 @@ def terminal_plan(home: Path, on: bool, platform: str, exe: str, wsl: str | None
             item.update(state="error", error=f"cannot change it: {e}")
         out.append(item)
     return out
+
+
+# ---------------------------------------------------------------- machine-wide hooks (verfy setup --system)
+
+# Where Claude Code and Cursor read settings an administrator deploys. A user, and so an agent running as that user,
+# cannot change these files, and Claude Code does not let user or project settings override a managed value. Verfy
+# writes a drop-in file of its own for Claude Code, so an organisation's managed-settings.json is left as it is.
+# https://code.claude.com/docs/en/managed-settings, https://cursor.com/docs/agent/hooks
+SYSTEM_FILES = {
+    "claude-code": {
+        "darwin": "/Library/Application Support/ClaudeCode/managed-settings.d/50-verfy.json",
+        "linux": "/etc/claude-code/managed-settings.d/50-verfy.json",
+        "win32": r"C:\Program Files\ClaudeCode\managed-settings.d\50-verfy.json",
+    },
+    "cursor": {
+        "darwin": "/Library/Application Support/Cursor/hooks.json",
+        "linux": "/etc/cursor/hooks.json",
+        "win32": r"C:\ProgramData\Cursor\hooks.json",
+    },
+}
+ADMIN_NOTE = ("it needs administrator rights: run it again in an administrator terminal (Windows) "
+              "or with sudo (macOS, Linux)")
+
+
+def _platform(platform: str) -> str:
+    return "win32" if platform.startswith("win") else ("darwin" if platform == "darwin" else "linux")
+
+
+def system_command(exe: str | None) -> str:
+    """The verfy a machine-wide hook runs: the full path when it has no space (a hook command is run by a shell), else
+    `verfy` from PATH."""
+    return exe if exe and " " not in exe else "verfy"
+
+
+def claude_system_settings(verfy: str) -> dict:
+    return {"hooks": {
+        "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": f"{verfy} hook pre-tool-use", "timeout": 10}]}],
+        "UserPromptSubmit": [{"hooks": [{"type": "command", "command": f"{verfy} hook prompt", "timeout": 10}]}],
+    }}
+
+
+def system_plan(platform: str, exe: str | None, root: Path | None = None) -> list[dict]:
+    """The machine-wide hook files for Claude Code and Cursor. `root` moves them under a test folder."""
+    plat, verfy = _platform(platform), system_command(exe)
+    out = []
+
+    def place(agent: str) -> Path:
+        p = Path(SYSTEM_FILES[agent][plat])
+        return root / p.relative_to(p.anchor) if root else p
+
+    path = place("claude-code")
+    item = {"agent": BY_KEY["claude-code"], "kind": "system", "path": path}
+    want = json.dumps(claude_system_settings(verfy), indent=2) + "\n"
+    try:
+        same = path.exists() and json.loads(path.read_text("utf-8-sig")) == claude_system_settings(verfy)
+        item.update(state="on" if same else "add", text=want)
+    except (OSError, ValueError) as e:
+        item.update(state="error", error=f"cannot read it: {e}")
+    out.append(item)
+
+    path = place("cursor")
+    item = {"agent": BY_KEY["cursor"], "kind": "system", "path": path}
+    try:
+        current = json.loads(path.read_text("utf-8-sig")) if path.exists() else {}
+        if not isinstance(current, dict):
+            raise ValueError("not a JSON object")
+        updated, changed = hooks.with_cursor_hook(current, command=f"{verfy} hook cursor")
+        item.update(state="add" if changed else "on", text=json.dumps(updated, indent=2) + "\n")
+    except (OSError, ValueError) as e:
+        item.update(state="error", error=f"cannot read it: {e}")
+    out.append(item)
+    return out
+
+
+def without_user_hooks(config: dict) -> tuple[dict, bool]:
+    """A settings or hooks file with Verfy's own hook entries taken out, everything else kept. Used once the same hooks
+    are machine-wide, so each call is not checked and recorded twice."""
+    out = json.loads(json.dumps(config))
+    hooks_ = out.get("hooks")
+    if not isinstance(hooks_, dict):
+        return out, False
+    changed = False
+    for event, entries in list(hooks_.items()):
+        if not isinstance(entries, list):
+            continue
+        kept = []
+        for e in entries:
+            if isinstance(e, dict) and isinstance(e.get("command"), str) and "verfy hook" in e["command"]:
+                changed = True  # Cursor: {"command": ...}
+                continue
+            if isinstance(e, dict) and isinstance(e.get("hooks"), list):
+                inner = [h for h in e["hooks"] if not (isinstance(h, dict) and "verfy hook" in str(h.get("command", "")))]
+                if len(inner) != len(e["hooks"]):
+                    changed = True
+                    if not inner:
+                        continue  # Claude Code: a group with only Verfy's hook
+                    e = {**e, "hooks": inner}
+            kept.append(e)
+        hooks_[event] = kept
+    return out, changed
+
+
+def user_hook_cleanup(home: Path) -> list[dict]:
+    """Verfy's entries in the user's own Claude Code and Cursor files, to remove after the machine-wide ones are in."""
+    out = []
+    for key, path in (("claude-code", home / ".claude" / "settings.json"), ("cursor", home / ".cursor" / "hooks.json")):
+        if not path.is_file():
+            continue
+        item = {"agent": BY_KEY[key], "kind": "unhook", "path": path}
+        try:
+            current = json.loads(path.read_text("utf-8-sig"))
+            if not isinstance(current, dict):
+                raise ValueError("not a JSON object")
+            updated, changed = without_user_hooks(current)
+            item.update(state="add" if changed else "on", text=json.dumps(updated, indent=2, ensure_ascii=False) + "\n")
+        except (OSError, ValueError) as e:
+            item.update(state="error", error=f"cannot read it: {e}")
+        out.append(item)
+    return out
+
+
+def apply_system(items: list[dict], cleanup: list[dict]) -> list[dict]:
+    """Write the machine-wide files; only when every one is in place, take Verfy's hooks out of the user's files."""
+    for item in items:
+        if item["state"] != "add":
+            continue
+        path: Path = item["path"]
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                shutil.copyfile(path, path.with_suffix(path.suffix + ".verfy-backup"))
+            path.write_text(item["text"], "utf-8")
+            item["done"] = True
+        except OSError as e:
+            item.update(state="error", error=ADMIN_NOTE if isinstance(e, PermissionError) else f"cannot write it: {e}")
+    if all(i["state"] in ("on", "add") for i in items):
+        return items + apply(cleanup)
+    for c in cleanup:
+        if c["state"] == "add":
+            c.update(state="skipped", error="kept, because a machine-wide file was not written")
+    return items + cleanup

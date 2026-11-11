@@ -112,14 +112,25 @@ class CursorHookTests(unittest.TestCase):
 
 
 class CursorInstallTests(unittest.TestCase):
-    def test_it_adds_three_hooks_that_fail_closed_and_keeps_the_rest(self):
+    def test_it_adds_its_hooks_and_keeps_the_rest(self):
         config, changed = hook.with_cursor_hook({"version": 1, "hooks": {"afterFileEdit": [{"command": "./format.sh"}], "beforeShellExecution": [{"command": "./mine.sh"}]}})
         self.assertTrue(changed)
         self.assertEqual(config["hooks"]["afterFileEdit"], [{"command": "./format.sh"}])
         self.assertEqual(config["hooks"]["beforeShellExecution"][0], {"command": "./mine.sh"})
-        for event in hook.CURSOR_EVENTS:
-            self.assertEqual(config["hooks"][event][-1], {"command": "verfy hook cursor", "failClosed": True})
+        # the hooks that decide fail closed; the prompt guard and the output filter do not stop Cursor when they break
+        for event in ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "preToolUse"):
+            self.assertTrue(config["hooks"][event][-1]["failClosed"], event)
+        for event in ("beforeSubmitPrompt", "postToolUse"):
+            self.assertFalse(config["hooks"][event][-1]["failClosed"], event)
+        self.assertEqual(config["hooks"]["postToolUse"][-1]["matcher"], "^MCP")
         self.assertFalse(hook.with_cursor_hook(config)[1])
+
+    def test_an_older_install_gets_the_new_hooks(self):
+        old = {"version": 1, "hooks": {e: [{"command": "verfy hook cursor", "failClosed": True}] for e in ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile")}}
+        config, changed = hook.with_cursor_hook(old)
+        self.assertTrue(changed)
+        self.assertEqual(len(config["hooks"]["beforeShellExecution"]), 1)
+        self.assertIn("preToolUse", config["hooks"])
 
     def test_a_new_file_has_the_version_cursor_requires(self):
         self.assertEqual(hook.with_cursor_hook({})[0]["version"], 1)

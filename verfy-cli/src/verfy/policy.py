@@ -52,10 +52,13 @@ def load_policy(source: str | os.PathLike | dict | None = None, *, workspace: st
         raise ValueError("session.after_outside_text must be off, ask or deny")
     if (pol.get("lock") or {}).get("on_new") not in ("ask", "deny", "allow"):
         raise ValueError("lock.on_new must be ask, deny or allow")
+    # read with the default "block" where it is used; left out of the policy so its hash, and receipts, stay the same
+    if pol.get("prompt_secrets", "block") not in ("block", "off"):
+        raise ValueError("prompt_secrets must be block or off")
     return pol
 
 
-STRICTNESS = {"off": 0, "allow": 0, "ask": 1, "deny": 2}
+STRICTNESS = {"off": 0, "allow": 0, "ask": 1, "deny": 2, "block": 2}
 
 
 def _stricter(a: Any, b: Any) -> Any:
@@ -87,6 +90,8 @@ def tighten(base: dict, project: Any) -> dict:
     out["network"]["unknown"] = _stricter(out["network"].get("unknown", "ask"), net.get("unknown"))
     out["lock"]["on_new"] = _stricter(out["lock"].get("on_new", "ask"), part("lock").get("on_new"))
     out["fail_mode"] = _stricter(out["fail_mode"], project.get("fail_mode"))
+    if project.get("prompt_secrets") == "block":
+        out["prompt_secrets"] = "block"
     out["session"]["after_outside_text"] = _stricter(out["session"].get("after_outside_text", "off"), part("session").get("after_outside_text"))
     if project.get("on_ask") == "deny":
         out["on_ask"] = "deny"

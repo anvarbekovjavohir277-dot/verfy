@@ -41,11 +41,20 @@ from typing import Any, Callable, IO
 
 from . import sessions
 from .policy import load_policy
+from ._util import redact_output, scan_secrets
 from .precheck import check
 
 PRE_TOOL_COMMAND = "verfy hook pre-tool-use"
 CURSOR_COMMAND = "verfy hook cursor"
-CURSOR_EVENTS = ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile")
+CURSOR_EVENTS = ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "preToolUse", "beforeSubmitPrompt", "postToolUse")
+# hooks.json entry per event: the hooks that decide fail closed; the prompt guard and the output filter must not stop
+# Cursor when they cannot run. preToolUse leaves Shell, Read and MCP calls to their own hooks, which already check them.
+CURSOR_ENTRY = {
+    "preToolUse": {"failClosed": True, "matcher": "^(?!Shell$|Read$|MCP)"},
+    "beforeSubmitPrompt": {"failClosed": False},
+    "postToolUse": {"failClosed": False, "matcher": "^MCP"},
+}
+PROMPT_COMMAND = "verfy hook prompt"
 MAX_STDIN = 4 * 1024 * 1024
 
 
@@ -103,6 +112,11 @@ def cursor_action(payload: dict[str, Any]) -> dict:
         if not isinstance(path, str) or not path:
             raise ValueError("no file path in the hook input")
         return {"server": "cursor", "tool": "read_file", "arguments": {"file_path": path}}
+    if event == "preToolUse":
+        data = payload.get("tool_input")
+        if isinstance(data, str):
+            data = json.loads(data or "{}")
+        return tool_action("cursor", str(payload.get("tool_name") or ""), data)  # type: ignore[return-value]
     raise ValueError(f"Verfy does not handle the Cursor event {event!r}")
 
 
@@ -124,6 +138,8 @@ def cursor_answer(out: dict | None, event: Any) -> dict:
         return {"permission": verdict, "user_message": reason, "agent_message": reason}
     if verdict == "ask":
         reason = "Cursor cannot wait for a person here, so this was blocked. " + reason
+    if event == "preToolUse":
+        return {"permission": "deny", "user_message": reason, "agent_message": reason}
     return {"permission": "deny", "user_message": reason}
 
 
@@ -470,6 +486,72 @@ def fail_safe(message: str, mode: str = "ask") -> dict:
     return _output(mode, f"Verfy could not check this action ({message}), so it was not allowed automatically. Review it yourself.")
 
 
+# ---------------------------------------------------------------- prompts and tool output
+
+def prompt_secret_reason(text: Any, policy: dict) -> str | None:
+    """Why a prompt should not be sent: it holds what looks like a key or token. None when it is fine."""
+    if not isinstance(text, str) or policy.get("prompt_secrets", "block") == "off":
+        return None
+    hits = scan_secrets(text)
+    if not hits:
+        return None
+    what = "; ".join(f"{h['label']} ({h['id']})" for h in hits[:3])
+    return ("Verfy stopped this prompt before it was sent: it contains what looks like a secret: " + what + ". A prompt goes to "
+            "the model provider and stays in the transcript. Remove the secret, or keep it in an environment variable or a "
+            "file the agent reads, and send the prompt again. (\"prompt_secrets\": \"off\" in your policy turns this off.)")
+
+
+def _record_prompt(record: Callable[..., dict | None] | None, agent: str, payload: dict, policy: dict, reason: str, text: str) -> None:
+    if record is None:
+        return
+    rules = sorted({h["id"] for h in scan_secrets(text)})
+    record(action={"server": agent, "tool": "submit_prompt", "arguments": {"prompt": text}},
+           decision={"verdict": "deny", "kind": "message", "findings": [{"rule": "VFY-PROMPT-001", "verdict": "deny", "message": reason}] +
+                     [{"rule": r, "verdict": "deny", "message": "secret in the prompt"} for r in rules]},
+           session=str(payload.get("session_id") or payload.get("conversation_id") or "ses_" + uuid.uuid4().hex[:12]),
+           policy=policy, outcome={"status": "blocked", "result_sha256": None})
+
+
+def side_answer(event: str, payload: dict, get_policy: Callable[[str | None], dict],
+                record: Callable[..., dict | None] | None) -> tuple[dict | None, int] | None:
+    """The answer for a hook that is not a tool call to check: a prompt about to be sent, a Cursor tool that another
+    hook already checks, or a Cursor MCP result. None for a tool call. These never block on an error of their own:
+    a prompt guard that stopped every prompt when it broke would be switched off."""
+    cursor_event = payload.get("hook_event_name") if event == "cursor" else None
+    if event == "cursor" and cursor_event == "preToolUse":
+        name = str(payload.get("tool_name") or "")
+        if name in ("Shell", "Read") or name.startswith("MCP"):
+            return {"permission": "allow"}, 0  # beforeShellExecution, beforeReadFile and beforeMCPExecution check these
+        return None
+    if event == "prompt" or cursor_event == "beforeSubmitPrompt":
+        try:
+            cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
+            policy = get_policy(cwd)
+            text = payload.get("prompt")
+            reason = prompt_secret_reason(text, policy)
+            if reason:
+                _record_prompt(record, "cursor" if event == "cursor" else "claude-code", payload, policy, reason, str(text))
+        except Exception:  # noqa: BLE001 - see the docstring
+            reason = None
+        if event == "cursor":
+            return ({"continue": False, "user_message": reason} if reason else {"continue": True}), 0
+        return ({"decision": "block", "reason": reason} if reason else None), 0
+    if cursor_event == "postToolUse":
+        try:
+            policy = get_policy(payload.get("cwd") if isinstance(payload.get("cwd"), str) else None)
+            if policy.get("redact_output", True) is False:
+                return {}, 0
+            raw = payload.get("tool_output")
+            value = json.loads(raw) if isinstance(raw, str) and raw[:1] in "[{" else raw
+            cleaned, hidden = redact_output(value)
+            if not hidden:
+                return {}, 0
+            return {"updated_mcp_tool_output": json.dumps(cleaned) if isinstance(raw, str) and value is not raw else cleaned}, 0
+        except Exception:  # noqa: BLE001
+            return {}, 0
+    return None
+
+
 def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None = None,
              get_policy: Callable[[str | None], dict] | None = None, record: Callable[..., dict | None] | None = None,
              fail_mode: Callable[[], str] | None = None, home: Path | None = None) -> int:
@@ -488,6 +570,13 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
         if len(raw) > MAX_STDIN:
             raise ValueError("hook input is larger than 4 MB")
         payload = prepare(json.loads(raw.removeprefix("\ufeff")))  # Windows PowerShell adds a BOM when its output encoding is UTF-8
+        side = side_answer(event, payload, get_policy, record)
+        if side is not None:
+            body, code = side
+            if body is not None:
+                stdout.write(json.dumps(body) + "\n")
+                stdout.flush()
+            return code
         if event == "pre-tool-use" and isinstance(payload, dict) and payload.get("tool_name") in DEVIN_TOOLS:
             # Devin reading Claude Code's settings: answer the way Devin reads, or leave it to Devin's own Verfy hook
             if devin_hook_installed():
@@ -518,6 +607,8 @@ AGENTS: dict[str, tuple[Callable[[Any], dict], Callable[[dict], Any], Callable[[
     "copilot": (copilot_payload, copilot_action, copilot_answer),
     "windsurf": (windsurf_payload, windsurf_action, windsurf_answer),
     "devin": (_payload, devin_action, devin_answer),
+    # Claude Code's UserPromptSubmit: answered by side_answer, never checked as a tool call
+    "prompt": (_payload, lambda p: (_ for _ in ()).throw(ValueError("not a tool call")), lambda out, p: (None, None, 0)),
 }
 
 
@@ -545,7 +636,7 @@ def with_cursor_hook(config: dict, command: str = CURSOR_COMMAND) -> tuple[dict,
         if not isinstance(entries, list):
             raise ValueError(f"`hooks.{event}` in hooks.json is not a list")
         if not any(isinstance(e, dict) and e.get("command") == command for e in entries):
-            entries.append({"command": command, "failClosed": True})
+            entries.append({"command": command, **CURSOR_ENTRY.get(event, {"failClosed": True})})
             changed = True
     return config, changed
 
@@ -571,9 +662,18 @@ def with_hook(settings: dict, command: str = PRE_TOOL_COMMAND, *, event: str = "
 WINDSURF_EVENTS = ("pre_run_command", "pre_read_code", "pre_write_code", "pre_mcp_tool_use")
 
 
+def with_claude_hooks(settings: dict) -> tuple[dict, bool]:
+    """Claude Code: the PreToolUse hook, and UserPromptSubmit, which stops a prompt that holds a secret."""
+    out, a = with_hook(settings)
+    out, b = with_hook(out, event="UserPromptSubmit", entry={"hooks": [{"type": "command", "command": PROMPT_COMMAND, "timeout": 10}]})
+    return out, a or b
+
+
 def with_codex_hook(config: dict) -> tuple[dict, bool]:
     """~/.codex/hooks.json; Codex runs it only after the person trusts it in /hooks."""
-    return with_hook(config, entry={"matcher": "*", "hooks": [{"type": "command", "command": "verfy hook codex", "timeout": 30}]})
+    out, a = with_hook(config, entry={"matcher": "*", "hooks": [{"type": "command", "command": "verfy hook codex", "timeout": 30}]})
+    out, b = with_hook(out, event="UserPromptSubmit", entry={"hooks": [{"type": "command", "command": PROMPT_COMMAND, "timeout": 10}]})
+    return out, a or b
 
 
 def with_gemini_hook(settings: dict) -> tuple[dict, bool]:
@@ -638,7 +738,7 @@ def _under(home_part: tuple[str, ...], project_part: tuple[str, ...]) -> Callabl
 
 # agent -> (label, settings file for (project, cwd), add the hook, folder that shows the agent is installed)
 INSTALL: dict[str, tuple[str, Callable[..., Path], Callable[[dict], tuple[dict, bool]], tuple[str, ...]]] = {
-    "claude-code": ("Claude Code", settings_path, with_hook, (".claude",)),
+    "claude-code": ("Claude Code", settings_path, with_claude_hooks, (".claude",)),
     "cursor": ("Cursor", cursor_hooks_path, with_cursor_hook, (".cursor",)),
     "codex": ("Codex", _under((".codex", "hooks.json"), (".codex", "hooks.json")), with_codex_hook, (".codex",)),
     "gemini": ("Gemini CLI", _under((".gemini", "settings.json"), (".gemini", "settings.json")), with_gemini_hook, (".gemini",)),
