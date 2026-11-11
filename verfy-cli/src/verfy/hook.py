@@ -18,12 +18,22 @@ hooks. Cursor counts no output as a failure, so there Verfy does answer "allow",
 and a file read cannot wait for a person, so "ask" becomes "deny". Cursor's file
 edits and web search are not covered: no hook documents their input.
 
-Reference: https://code.claude.com/docs/en/hooks, https://cursor.com/docs/agent/hooks
+``verfy hook codex``, ``verfy hook gemini``, ``verfy hook copilot`` and
+``verfy hook windsurf`` (beta) do the same for Codex CLI, Gemini CLI, GitHub
+Copilot (the CLI and VS Code) and Windsurf. Codex, Gemini, Windsurf and the
+Copilot CLI cannot wait for a person from a hook, so there "ask" becomes a block
+that tells the agent to ask the user. What an adapter cannot read is blocked.
+
+Reference: https://code.claude.com/docs/en/hooks, https://cursor.com/docs/agent/hooks,
+https://developers.openai.com/codex/hooks, https://geminicli.com/docs/hooks/,
+https://docs.github.com/en/copilot/reference/hooks-configuration, https://docs.windsurf.com/windsurf/cascade/hooks
 """
 
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import sys
 import uuid
 from pathlib import Path
@@ -117,13 +127,273 @@ def cursor_answer(out: dict | None, event: Any) -> dict:
     return {"permission": "deny", "user_message": reason}
 
 
+# ------------------------------------------------- Codex, Gemini, Copilot, Windsurf
+
+# tool names after lower-casing and dropping "_", "-" and spaces
+SHELL_TOOLS = {"bash", "powershell", "shell", "shellcommand", "execcommand", "localshell", "unifiedexec", "runshellcommand",
+               "runinterminal", "runcommand", "terminal", "containerexec"}
+READ_TOOLS = {"view", "read", "readfile", "notebookread"}
+WRITE_TOOLS = {"create", "createfile", "write", "writefile", "edit", "editfile", "multiedit", "replace", "strreplace",
+               "replacestringinfile", "multireplacestringinfile", "inserteditintofile", "notebookedit"}
+FETCH_TOOLS = {"webfetch", "fetch", "fetchurl", "fetchwebpage"}
+PATH_KEYS = ("file_path", "filePath", "path", "absolute_path", "notebook_path", "target_file", "file")
+CONTENT_KEYS = ("content", "file_text", "fileText", "new_string", "newString", "new_str", "newStr", "new_source", "code", "text")
+NO_ASK = ("{agent} cannot wait for a person from a hook, so Verfy blocked this. Ask the user first; "
+          "if they agree, they can run it themselves or allow it in the Verfy policy. ")
+
+
+def _key(name: str) -> str:
+    return re.sub(r"[\W_]", "", name.lower())
+
+
+def _first(data: dict, keys: tuple[str, ...]) -> str:
+    for k in keys:
+        if isinstance(data.get(k), str) and data[k]:
+            return data[k]
+    return ""
+
+
+def _command(data: dict) -> str:
+    cmd = data.get("command", data.get("cmd"))
+    if isinstance(cmd, list) and all(isinstance(c, str) for c in cmd):
+        # ["bash", "-lc", "rm -rf ~"] is the script; anything else is quoted back into one line
+        return cmd[2] if len(cmd) >= 3 and cmd[1] in ("-c", "-lc", "-Command", "/c") else shlex.join(cmd)
+    return cmd if isinstance(cmd, str) else ""
+
+
+def _write(server: str, path: str, content: str) -> dict:
+    return {"server": server, "tool": "write_file", "arguments": {"file_path": path, "content": content}}
+
+
+def _writes(server: str, data: dict) -> list[dict]:
+    """One write per file an edit tool changes. Raises when no file is named, so it is not allowed by default."""
+    items = data.get("replacements") if isinstance(data.get("replacements"), list) else [data]
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("an edit without a file")
+        path = _first(item, PATH_KEYS) or _first(data, PATH_KEYS)
+        if not path:
+            raise ValueError("no file path in the edit")
+        edits = item.get("edits")
+        if isinstance(edits, list):
+            content = "\n".join(_first(e, CONTENT_KEYS) for e in edits if isinstance(e, dict))
+        else:
+            content = _first(item, CONTENT_KEYS)
+        out.append(_write(server, path, content))
+    return out
+
+
+def _patch_text(data: Any) -> str:
+    if isinstance(data, str):
+        return data
+    for k in ("patch", "input", "command"):
+        v = data.get(k)
+        if isinstance(v, list):
+            v = next((x for x in v if isinstance(x, str) and "*** " in x), None)
+        if isinstance(v, str) and "*** " in v:
+            return v
+    return ""
+
+
+def patch_actions(server: str, text: str) -> list[dict]:
+    """The files an apply_patch body adds, changes, moves or deletes, each as a write with the lines it adds."""
+    out: list[dict] = []
+    path, added = None, []
+
+    def flush():
+        if path is not None:
+            out.append(_write(server, path, "\n".join(added)))
+
+    for line in text.splitlines():
+        m = re.match(r"^\*\*\* (Add|Update|Delete) File: (.+?)\s*$", line)
+        if m:
+            flush()
+            path, added = m.group(2), []
+            continue
+        m = re.match(r"^\*\*\* Move to: (.+?)\s*$", line)
+        if m and path is not None:
+            flush()
+            path, added = m.group(1), []
+            continue
+        if path is not None and line.startswith("+"):
+            added.append(line[1:])
+    flush()
+    if not out:
+        raise ValueError("no file in the patch")
+    return out
+
+
+def _urls(data: dict) -> list[str]:
+    found = [u for k in ("url", "urls") for u in ([data.get(k)] if isinstance(data.get(k), str) else data.get(k) or []) if isinstance(u, str)]
+    if not found and isinstance(data.get("prompt"), str):
+        found = re.findall(r"https?://[^\s\"'<>)\]]+", data["prompt"])
+    return found
+
+
+def tool_action(server: str, name: str, data: Any) -> dict | list[dict]:
+    """A tool call from Codex, Gemini or Copilot as one or more Verfy actions. Known tools whose input it cannot read raise."""
+    if not name:
+        raise ValueError("no tool name in the hook input")
+    if not isinstance(data, dict):
+        data = {"input": data}
+    if name.startswith("mcp__"):
+        server_, _, tool = name[len("mcp__"):].rpartition("__")
+        return {"server": server_ or name, "tool": tool or name, "arguments": data}
+    key = _key(name)
+    if key == "strreplaceeditor":
+        key = "view" if data.get("command") == "view" else "edit"
+    if key in SHELL_TOOLS:
+        cmd = _command(data)
+        if not cmd:
+            raise ValueError(f"no command in the {name} call")
+        return {"server": server, "tool": "Shell", "arguments": {"command": cmd}}
+    if key in READ_TOOLS:
+        path = _first(data, PATH_KEYS)
+        if not path:
+            raise ValueError(f"no file path in the {name} call")
+        return {"server": server, "tool": "read_file", "arguments": {"file_path": path}}
+    if key in WRITE_TOOLS:
+        return _writes(server, data)
+    if key == "applypatch":
+        return patch_actions(server, _patch_text(data))
+    if key == "readmanyfiles":
+        paths = [p for k in ("paths", "include") for p in data.get(k) or [] if isinstance(p, str)]
+        if not paths:
+            raise ValueError("no file in the read_many_files call")
+        return [{"server": server, "tool": "read_file", "arguments": {"file_path": p}} for p in paths]
+    if key in FETCH_TOOLS:
+        urls = _urls(data)
+        if urls:
+            return [{"server": server, "tool": "fetch_url", "arguments": {"url": u}} for u in urls]
+    return {"server": server, "tool": name, "arguments": data}
+
+
+def codex_action(payload: dict) -> dict | list[dict]:
+    """Codex sends Claude Code's PreToolUse shape; apply_patch carries the whole patch."""
+    return tool_action("codex", str(payload.get("tool_name") or ""), payload.get("tool_input"))
+
+
+def gemini_action(payload: dict) -> dict | list[dict]:
+    """Gemini CLI's BeforeTool. An MCP tool comes as mcp_<server>_<tool>, with the server in mcp_context."""
+    name = str(payload.get("tool_name") or "")
+    data = payload.get("tool_input")
+    ctx = payload.get("mcp_context") if isinstance(payload.get("mcp_context"), dict) else {}
+    server = ctx.get("server_name") or ctx.get("serverName")
+    if isinstance(server, str) and server:
+        tool = ctx.get("tool_name") or ctx.get("toolName") or name.removeprefix(f"mcp_{server}_")
+        return {"server": server, "tool": str(tool), "arguments": data if isinstance(data, dict) else {"input": data}}
+    if name.startswith("mcp_") and not name.startswith("mcp__"):
+        server, _, tool = name[len("mcp_"):].partition("_")
+        return {"server": server, "tool": tool or name, "arguments": data if isinstance(data, dict) else {"input": data}}
+    return tool_action("gemini", name, data)
+
+
+def copilot_action(payload: dict) -> dict | list[dict]:
+    """Copilot CLI sends toolName and toolArgs (a JSON string); VS Code sends Claude Code's tool_name and tool_input."""
+    name = str(payload.get("toolName") or payload.get("tool_name") or "")
+    data = payload["toolArgs"] if "toolArgs" in payload else payload.get("tool_input")
+    if isinstance(data, str):
+        data = json.loads(data or "{}")
+    return tool_action("copilot", name, data)
+
+
+def windsurf_action(payload: dict) -> dict | list[dict]:
+    """Windsurf's pre-hooks. Only the four it documents are read; anything else raises and is blocked."""
+    event = payload.get("agent_action_name")
+    info = payload.get("tool_info")
+    if not isinstance(info, dict):
+        raise ValueError("no tool_info in the hook input")
+    if event == "pre_run_command":
+        cmd = info.get("command_line")
+        if not isinstance(cmd, str) or not cmd:
+            raise ValueError("no command in the hook input")
+        return {"server": "windsurf", "tool": "Shell", "arguments": {"command": cmd}}
+    if event in ("pre_read_code", "pre_write_code"):
+        path = info.get("file_path")
+        if not isinstance(path, str) or not path:
+            raise ValueError("no file path in the hook input")
+        if event == "pre_read_code":
+            return {"server": "windsurf", "tool": "read_file", "arguments": {"file_path": path}}
+        edits = info.get("edits") if isinstance(info.get("edits"), list) else []
+        return _write("windsurf", path, "\n".join(str(e.get("new_string") or "") for e in edits if isinstance(e, dict)))
+    if event == "pre_mcp_tool_use":
+        server, tool = info.get("mcp_server_name"), info.get("mcp_tool_name")
+        if not (isinstance(server, str) and server and isinstance(tool, str) and tool):
+            raise ValueError("no server or tool name in the hook input")
+        data = info.get("mcp_tool_arguments")
+        if isinstance(data, str):
+            data = json.loads(data or "{}")
+        return {"server": server, "tool": tool, "arguments": data if isinstance(data, dict) else {"input": data}}
+    raise ValueError(f"Verfy does not handle the Windsurf hook {event!r}")
+
+
+def _payload(payload: Any) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("hook input must be a JSON object")
+    return payload
+
+
+def copilot_payload(payload: Any) -> dict:
+    payload = _payload(payload)
+    return {**payload, "session_id": payload.get("session_id") or payload.get("sessionId")}
+
+
+def windsurf_payload(payload: Any) -> dict:
+    payload = _payload(payload)
+    info = payload.get("tool_info") if isinstance(payload.get("tool_info"), dict) else {}
+    return {**payload, "cwd": info.get("cwd") or payload.get("cwd"), "session_id": payload.get("trajectory_id")}
+
+
+def _decision(out: dict) -> tuple[str, str]:
+    h = out["hookSpecificOutput"]
+    return h["permissionDecision"], h["permissionDecisionReason"]
+
+
+def codex_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
+    """Codex acts only on deny; it skips an ask and runs the tool, so an ask is sent as a deny."""
+    if out is None:
+        return None, None, 0
+    verdict, reason = _decision(out)
+    return _output("deny", (NO_ASK.format(agent="Codex") if verdict == "ask" else "") + reason), None, 0
+
+
+def gemini_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
+    if out is None:
+        return {}, None, 0
+    verdict, reason = _decision(out)
+    reason = (NO_ASK.format(agent="Gemini CLI") if verdict == "ask" else "") + reason
+    return {"decision": "deny", "reason": reason, "systemMessage": reason}, None, 0
+
+
+def copilot_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
+    """Both shapes in one answer: Copilot CLI reads the top-level fields, VS Code reads hookSpecificOutput.
+    VS Code can ask a person; the CLI cannot, so for the CLI (or input it could not read) an ask becomes a deny."""
+    if out is None:
+        return None, None, 0
+    verdict, reason = _decision(out)
+    vscode = isinstance(payload, dict) and "tool_name" in payload and "toolName" not in payload
+    if verdict == "ask" and not vscode:
+        verdict, reason = "deny", NO_ASK.format(agent="Copilot CLI") + reason
+    return {"permissionDecision": verdict, "permissionDecisionReason": reason, **_output(verdict, reason)}, None, 0
+
+
+def windsurf_answer(out: dict | None, payload: Any) -> tuple[dict | None, str | None, int]:
+    """Windsurf blocks on exit code 2 and shows stderr."""
+    if out is None:
+        return None, None, 0
+    verdict, reason = _decision(out)
+    return None, (NO_ASK.format(agent="Windsurf") if verdict == "ask" else "") + reason, 2
+
+
 def _output(verdict: str, reason: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": verdict, "permissionDecisionReason": reason}}
 
 
-def _reason(decision: dict, receipt: dict | None) -> str:
+def _reason(decision: dict, receipt: dict | list[dict] | None) -> str:
     rules = "; ".join(f"[{f['rule']}] {f['message']}" for f in decision["findings"]) or "no rule matched"
-    tail = f" Receipt {receipt['id']} (#{receipt['seq']})." if receipt else ""
+    receipts = receipt if isinstance(receipt, list) else [receipt] if receipt else []
+    tail = (" Receipt " if len(receipts) == 1 else " Receipts ") + ", ".join(f"{r['id']} (#{r['seq']})" for r in receipts) + "." if receipts else ""
     if decision["verdict"] == "deny":
         return f"Verfy blocked this action: {rules}.{tail} Do not retry it in another form; explain to the user why it is needed."
     return f"Verfy: this action needs your approval: {rules}.{tail}"
@@ -143,19 +413,31 @@ def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], 
     cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else None
     policy = get_policy(cwd)
     tracked = str(payload.get("session_id") or "") if home and (policy.get("session") or {}).get("after_outside_text", "off") != "off" else ""
-    source = sessions.source_of(home, tracked) if tracked else None
-    action, decision = evaluate(payload, policy, {"untrusted": source} if source else None, to_action)
-    if tracked and decision["verdict"] != "deny":
-        read = sessions.outside_text(action, decision, policy)
-        if read:
-            sessions.mark(home, tracked, read)
-    receipt = None
-    if record is not None:
-        receipt = record(action=action, decision=decision, session=str(payload.get("session_id") or "ses_" + uuid.uuid4().hex[:12]),
-                         policy=policy, outcome={"status": "pending" if decision["verdict"] == "allow" else ("blocked" if decision["verdict"] == "deny" else "asked"), "result_sha256": None})
-    if decision["verdict"] == "allow":
+    actions = to_action(payload)
+    actions = actions if isinstance(actions, list) else [actions]
+    if not actions:
+        raise ValueError("no action in the hook input")
+    session = str(payload.get("session_id") or "ses_" + uuid.uuid4().hex[:12])
+    # one patch can change several files: each is checked and recorded, and the strictest answer wins
+    verdict, findings, receipts = "allow", [], []
+    for action in actions:
+        source = sessions.source_of(home, tracked) if tracked else None
+        decision = check(action, policy, {"untrusted": source} if source else None)
+        if tracked and decision["verdict"] != "deny":
+            read = sessions.outside_text(action, decision, policy)
+            if read:
+                sessions.mark(home, tracked, read)
+        receipt = None
+        if record is not None:
+            receipt = record(action=action, decision=decision, session=session, policy=policy,
+                             outcome={"status": "pending" if decision["verdict"] == "allow" else ("blocked" if decision["verdict"] == "deny" else "asked"), "result_sha256": None})
+        if decision["verdict"] != "allow":
+            findings += decision["findings"]
+            receipts += [receipt] if receipt else []
+            verdict = "deny" if "deny" in (verdict, decision["verdict"]) else "ask"
+    if verdict == "allow":
         return None
-    return _output(decision["verdict"], _reason(decision, receipt))
+    return _output(verdict, _reason({"verdict": verdict, "findings": findings}, receipts))
 
 
 def fail_safe(message: str, mode: str = "ask") -> dict:
@@ -166,24 +448,22 @@ def fail_safe(message: str, mode: str = "ask") -> dict:
 def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None = None,
              get_policy: Callable[[str | None], dict] | None = None, record: Callable[..., dict | None] | None = None,
              fail_mode: Callable[[], str] | None = None, home: Path | None = None) -> int:
-    """Entry point for ``verfy hook <event>``. Always exits 0 with JSON on stdout."""
+    """Entry point for ``verfy hook <event>``. Answers with JSON on stdout and exits 0, except Windsurf, which blocks
+    on exit code 2 with the reason on stderr."""
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     get_policy = get_policy or (lambda cwd: load_policy(None, workspace=cwd))
-    if event not in ("pre-tool-use", "cursor"):
-        print(f"verfy hook: unknown event `{event}` (supported: pre-tool-use, cursor)", file=sys.stderr)
+    if event not in AGENTS:
+        print(f"verfy hook: unknown event `{event}` (supported: {', '.join(AGENTS)})", file=sys.stderr)
         return 2
-    cursor = event == "cursor"
-    cursor_event = None
+    prepare, to_action, answer = AGENTS[event]
+    payload = None
     try:
         raw = stdin.read(MAX_STDIN + 1)
         if len(raw) > MAX_STDIN:
             raise ValueError("hook input is larger than 4 MB")
-        payload = json.loads(raw.removeprefix("\ufeff"))  # Windows PowerShell adds a BOM when its output encoding is UTF-8
-        if cursor:
-            payload = cursor_payload(payload)
-            cursor_event = payload.get("hook_event_name")
-        out = run_pre_tool_use(payload, get_policy=get_policy, record=record, home=home, to_action=cursor_action if cursor else action_from_payload)
+        payload = prepare(json.loads(raw.removeprefix("\ufeff")))  # Windows PowerShell adds a BOM when its output encoding is UTF-8
+        out = run_pre_tool_use(payload, get_policy=get_policy, record=record, home=home, to_action=to_action)
     except Exception as e:  # noqa: BLE001 - every failure must become ask/deny, never allow
         mode = "ask"
         try:
@@ -191,12 +471,23 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
         except Exception:  # noqa: BLE001
             mode = "ask"
         out = fail_safe(f"{type(e).__name__}: {str(e)[:200]}", mode)
-    if cursor:
-        out = cursor_answer(out, cursor_event)
-    if out is not None:
-        stdout.write(json.dumps(out) + "\n")
+    body, err, code = answer(out, payload)
+    if body is not None:
+        stdout.write(json.dumps(body) + "\n")
         stdout.flush()
-    return 0
+    if err:
+        print(err, file=sys.stderr)
+    return code
+
+
+AGENTS: dict[str, tuple[Callable[[Any], dict], Callable[[dict], Any], Callable[[dict | None, Any], tuple[dict | None, str | None, int]]]] = {
+    "pre-tool-use": (lambda p: p, action_from_payload, lambda out, p: (out, None, 0)),
+    "cursor": (cursor_payload, cursor_action, lambda out, p: (cursor_answer(out, p.get("hook_event_name") if isinstance(p, dict) else None), None, 0)),
+    "codex": (_payload, codex_action, codex_answer),
+    "gemini": (_payload, gemini_action, gemini_answer),
+    "copilot": (copilot_payload, copilot_action, copilot_answer),
+    "windsurf": (windsurf_payload, windsurf_action, windsurf_answer),
+}
 
 
 # ---------------------------------------------------------------- install
@@ -228,18 +519,87 @@ def with_cursor_hook(config: dict, command: str = CURSOR_COMMAND) -> tuple[dict,
     return config, changed
 
 
-def with_hook(settings: dict, command: str = PRE_TOOL_COMMAND) -> tuple[dict, bool]:
-    """Add the Verfy PreToolUse hook to a Claude Code settings object. Returns (settings, changed)."""
+def with_hook(settings: dict, command: str = PRE_TOOL_COMMAND, *, event: str = "PreToolUse", entry: dict | None = None) -> tuple[dict, bool]:
+    """Add the Verfy hook to a settings object shaped like Claude Code's (Codex and Gemini use the same shape).
+    Returns (settings, changed)."""
     out = json.loads(json.dumps(settings))
     hooks = out.setdefault("hooks", {})
     if not isinstance(hooks, dict):
-        raise ValueError("`hooks` in settings.json is not an object")
-    pre = hooks.setdefault("PreToolUse", [])
+        raise ValueError("`hooks` in the settings file is not an object")
+    pre = hooks.setdefault(event, [])
     if not isinstance(pre, list):
-        raise ValueError("`hooks.PreToolUse` in settings.json is not a list")
+        raise ValueError(f"`hooks.{event}` in the settings file is not a list")
     for group in pre:
         for h in (group or {}).get("hooks", []) if isinstance(group, dict) else []:
             if isinstance(h, dict) and str(h.get("command", "")).startswith("verfy hook"):
                 return out, False
-    pre.append({"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 10}]})
+    pre.append(entry or {"matcher": "*", "hooks": [{"type": "command", "command": command, "timeout": 10}]})
     return out, True
+
+
+WINDSURF_EVENTS = ("pre_run_command", "pre_read_code", "pre_write_code", "pre_mcp_tool_use")
+
+
+def with_codex_hook(config: dict) -> tuple[dict, bool]:
+    """~/.codex/hooks.json; Codex runs it only after the person trusts it in /hooks."""
+    return with_hook(config, entry={"matcher": "*", "hooks": [{"type": "command", "command": "verfy hook codex", "timeout": 30}]})
+
+
+def with_gemini_hook(settings: dict) -> tuple[dict, bool]:
+    """BeforeTool in ~/.gemini/settings.json. No matcher: every tool. Gemini counts the timeout in milliseconds."""
+    return with_hook(settings, event="BeforeTool",
+                     entry={"hooks": [{"name": "verfy", "type": "command", "command": "verfy hook gemini", "timeout": 30000}]})
+
+
+def with_copilot_hook(config: dict) -> tuple[dict, bool]:
+    """A hooks file of its own (~/.copilot/hooks/verfy.json or .github/hooks/verfy.json). The CLI runs `bash` or
+    `powershell`; VS Code runs `command`."""
+    out = json.loads(json.dumps(config))
+    out.setdefault("version", 1)
+    hooks = out.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("`hooks` in the hooks file is not an object")
+    pre = hooks.setdefault("preToolUse", [])
+    if not isinstance(pre, list):
+        raise ValueError("`hooks.preToolUse` in the hooks file is not a list")
+    cmd = "verfy hook copilot"
+    if any(isinstance(h, dict) and cmd in (h.get("command"), h.get("bash"), h.get("powershell")) for h in pre):
+        return out, False
+    pre.append({"type": "command", "command": cmd, "bash": cmd, "powershell": cmd, "timeoutSec": 30})
+    return out, True
+
+
+def with_windsurf_hook(config: dict) -> tuple[dict, bool]:
+    """Windsurf's hooks.json: one entry per pre-hook. show_output puts Verfy's reason in front of the person."""
+    out = json.loads(json.dumps(config))
+    hooks = out.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("`hooks` in hooks.json is not an object")
+    changed = False
+    for event in WINDSURF_EVENTS:
+        entries = hooks.setdefault(event, [])
+        if not isinstance(entries, list):
+            raise ValueError(f"`hooks.{event}` in hooks.json is not a list")
+        if not any(isinstance(e, dict) and e.get("command") == "verfy hook windsurf" for e in entries):
+            entries.append({"command": "verfy hook windsurf", "show_output": True})
+            changed = True
+    return out, changed
+
+
+def _under(home_part: tuple[str, ...], project_part: tuple[str, ...]) -> Callable[..., Path]:
+    def path(project: bool, cwd: Path | None = None) -> Path:
+        return (cwd or Path.cwd()).joinpath(*project_part) if project else Path.home().joinpath(*home_part)
+    return path
+
+
+# agent -> (label, settings file for (project, cwd), add the hook, folder that shows the agent is installed)
+INSTALL: dict[str, tuple[str, Callable[..., Path], Callable[[dict], tuple[dict, bool]], tuple[str, ...]]] = {
+    "claude-code": ("Claude Code", settings_path, with_hook, (".claude",)),
+    "cursor": ("Cursor", cursor_hooks_path, with_cursor_hook, (".cursor",)),
+    "codex": ("Codex", _under((".codex", "hooks.json"), (".codex", "hooks.json")), with_codex_hook, (".codex",)),
+    "gemini": ("Gemini CLI", _under((".gemini", "settings.json"), (".gemini", "settings.json")), with_gemini_hook, (".gemini",)),
+    "copilot": ("Copilot", _under((".copilot", "hooks", "verfy.json"), (".github", "hooks", "verfy.json")), with_copilot_hook, (".copilot",)),
+    "windsurf": ("Windsurf", _under((".codeium", "windsurf", "hooks.json"), (".windsurf", "hooks.json")), with_windsurf_hook, (".codeium", "windsurf")),
+}
+COMMANDS = {"claude-code": PRE_TOOL_COMMAND, "cursor": CURSOR_COMMAND, "codex": "verfy hook codex", "gemini": "verfy hook gemini",
+            "copilot": "verfy hook copilot", "windsurf": "verfy hook windsurf"}

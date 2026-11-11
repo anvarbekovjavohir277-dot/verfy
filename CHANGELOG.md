@@ -2,6 +2,12 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.20.0 (2026-11-11)
+
+- **Hooks for Codex CLI, Gemini CLI, GitHub Copilot and Windsurf (beta).** `verfy hook install --codex`, `--gemini`, `--copilot` or `--windsurf` (add `--write` to save, `--project` for this folder) adds `verfy hook codex|gemini|copilot|windsurf`, which checks each tool call with the same rules as the Claude Code hook and signs a receipt tagged with the agent. Codex's `apply_patch` is checked file by file. Codex, Gemini CLI, Copilot CLI and Windsurf cannot wait for a person from a hook, so where Verfy would ask it blocks and tells the agent to ask you; Copilot in VS Code asks you. Input a hook cannot read is blocked. Changes to these hook files are denied to the agent, and changes to `~/.codex/config.toml` need approval. These follow each agent's hook documentation and have not yet been run inside every agent.
+- `verfy doctor` shows these hooks too.
+- `--pub` takes a public key that starts with `-`. argparse used to read it as a flag.
+
 ## 0.19.0 (2026-11-10)
 
 - **`verfy.lock` pins the server's code, not only its tools.** For a server that npx, bunx, pnpm dlx, yarn dlx, uvx or pipx starts with an exact version, `verfy lock check --update` records the package and the registry's hash of that release: npm's `dist.integrity` (sha512), or on PyPI the sha256 of every file of the release. `verfy lock check` fails with exit 2 when the config starts another version, drops the version, or the registry now reports other files for the locked version, even when every tool definition is unchanged. **After you upgrade, run `verfy lock check --update` once** to record the hashes; until then the check passes and says they are missing.

@@ -134,13 +134,13 @@ class CursorInstallTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         path = tmp / ".cursor" / "hooks.json"
-        with mock.patch.object(hook, "cursor_hooks_path", return_value=path):
-            self.assertTrue(cli._install_hook(False, False, cursor=True)[1])
+        with mock.patch.dict(hook.INSTALL, {"cursor": ("Cursor", lambda project, cwd=None: path, hook.with_cursor_hook, (".cursor",))}):
+            self.assertTrue(cli._install_hook(False, False, "cursor")[1])
             self.assertFalse(path.exists())
-            cli._install_hook(False, True, cursor=True)
+            cli._install_hook(False, True, "cursor")
             self.assertIn("beforeMCPExecution", json.loads(path.read_text("utf-8"))["hooks"])
             path.write_text('{"version": 1, "hooks": {}}', "utf-8")
-            cli._install_hook(False, True, cursor=True)
+            cli._install_hook(False, True, "cursor")
         self.assertEqual(path.with_suffix(".json.verfy-backup").read_text("utf-8"), '{"version": 1, "hooks": {}}')
 
 

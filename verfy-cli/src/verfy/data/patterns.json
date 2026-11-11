@@ -354,7 +354,7 @@
   [
    "VFY-SELF-005",
    "ask",
-   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\bgit\\s+(?:rm|mv)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
+   "(?:\\b(?:python[0-9.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell)\\b|\\bgit\\s+(?:rm|mv)\\b|\\b(?:Set-Content|Add-Content|Out-File|Clear-Content|Remove-Item|Move-Item|Copy-Item|New-Item|Rename-Item|del|erase|rd|rmdir)\\b)[^\\n]*?(?:\\.claude[\\/]+settings(?:\\.local)?\\.json|\\.cursor[\\/]+hooks\\.json|\\.codex[\\/]+hooks\\.json|\\.gemini[\\/]+settings\\.json|\\.copilot[\\/]+hooks\\b|\\.github[\\/]+hooks\\b|windsurf[\\/]+hooks\\.json|\\bverfy\\.lock\\b|\\bverfy\\.policy\\.json\\b|[\\/]\\.verfy(?:[\\/]|\\b)|[\\/]Programs[\\/]+verfy\\b|\\.local[\\/]+share[\\/]+verfy\\b)",
    "i",
    "Touches a file Verfy relies on (hook settings, verfy.lock, the policy or the Verfy install) in a way Verfy cannot follow."
   ],
@@ -1399,6 +1399,14 @@
    "**/.claude/settings.local.json",
    "~/.cursor/hooks.json",
    "**/.cursor/hooks.json",
+   "~/.codex/hooks.json",
+   "**/.codex/hooks.json",
+   "~/.gemini/settings.json",
+   "**/.gemini/settings.json",
+   "~/.copilot/hooks/**",
+   "**/.github/hooks/**",
+   "~/.codeium/windsurf/hooks.json",
+   "**/.windsurf/hooks.json",
    "**/verfy.lock",
    "**/verfy.policy.json",
    "~/.local/share/verfy/**",
@@ -1415,7 +1423,10 @@
    "**/.cursor/mcp.json",
    "**/.vscode/mcp.json",
    "**/claude_desktop_config.json",
-   "~/.codeium/windsurf/mcp_config.json"
+   "~/.codeium/windsurf/mcp_config.json",
+   "~/.codex/config.toml",
+   "**/.codex/config.toml",
+   "~/.copilot/mcp-config.json"
   ],
   "secret": {
    "_comment": "Verfy's signing key and device token (in ~/.verfy). An agent that reads them can sign its own receipts or upload as this device.",

