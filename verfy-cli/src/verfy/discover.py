@@ -1,5 +1,5 @@
 """Verfy Scan, config side: find MCP servers in the configs of Claude Code, Cursor, Claude Desktop,
-Codex CLI, Gemini CLI, VS Code and Windsurf, and check how each server is launched.
+Codex CLI, Gemini CLI, VS Code, Copilot CLI and Windsurf, and check how each server is launched.
 
 This is a *static* check of the configuration only. It never starts a
 server. Looking at the tools a server serves needs ``verfy scan --live``,
@@ -51,6 +51,7 @@ def candidate_paths(home: Path, cwd: Path) -> list[tuple[str, Path]]:
         ("codex user", home / ".codex" / "config.toml"),
         ("gemini user", home / ".gemini" / "settings.json"),
         ("windsurf user", home / ".codeium" / "windsurf" / "mcp_config.json"),
+        ("copilot user", home / ".copilot" / "mcp-config.json"),
         *[("vscode user", d / "mcp.json") for d in vscode_user],
         ("claude-desktop", home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"),
         ("claude-desktop", appdata / "Claude" / "claude_desktop_config.json"),

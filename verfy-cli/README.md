@@ -8,6 +8,16 @@ curl -fsSLO https://verfy.dev/install.sh && less install.sh && sh install.sh   #
 pip install "verfy[fast]"          # optional: faster Ed25519 via `cryptography`
 ```
 
+## Set up every agent at once
+
+```bash
+verfy init               # signing key and policy; in a terminal it offers to set up every agent it finds
+verfy setup              # shows what it would change for each agent found here
+verfy setup --write      # does it, keeping a backup of every file; run it again after installing another agent
+```
+
+`verfy setup` finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot (CLI and VS Code), Windsurf and Claude Desktop. For each, it adds Verfy's hook and puts the MCP servers in that agent's config behind the gateway (scan, lock, pre-check, receipts). After that there is nothing to type: the agent asks Verfy before each tool call. `--agent codex` picks one agent, `--project` works on this folder's files, and `--hooks-only` leaves the MCP configs alone. A remote server that signs in with OAuth is left as it is. The sections below do the same thing one agent at a time.
+
 ## Guard Claude Code
 
 ```bash

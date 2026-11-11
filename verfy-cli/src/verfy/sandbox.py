@@ -32,12 +32,36 @@ BASE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LA
 BASE_ENV_PREFIXES = ("LC_", "XDG_")
 AGENT_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")  # an agent cannot start without its own key
 AGENT_HOSTS = ["api.anthropic.com"]
+# what each agent needs to start inside the sandbox: its key, its service and its own folder. Found by the command's name.
+AGENT_PROFILES = {
+    "claude": (AGENT_ENV_PREFIXES, AGENT_HOSTS, ["~/.claude", "~/.claude.json"]),
+    "codex": (("OPENAI_", "CODEX_"), ["api.openai.com", "chatgpt.com", "auth.openai.com"], ["~/.codex"]),
+    "gemini": (("GEMINI_", "GOOGLE_"), ["generativelanguage.googleapis.com", "cloudcode-pa.googleapis.com", "oauth2.googleapis.com"], ["~/.gemini"]),
+    "copilot": (("COPILOT_", "GH_", "GITHUB_"), ["api.githubcopilot.com", "api.individual.githubcopilot.com", "api.business.githubcopilot.com",
+                                                 "api.enterprise.githubcopilot.com", "api.github.com", "github.com"], ["~/.copilot"]),
+}
 # in the folder a command may write to, but these decide what runs later, outside the sandbox. Closed whether or not they
 # exist, or a command could create one. The file under each folder makes the runtime hold a missing folder with an empty
 # one on Linux, not with a device, so that reading what is under it says "not found".
 PROJECT_CONTROL = ["./verfy.lock", "./verfy.policy.json", "./.mcp.json", "./.claude", "./.claude/settings.json", "./.claude/settings.local.json",
-                   "./.cursor", "./.cursor/hooks.json", "./.cursor/mcp.json", "./.git/hooks", "./.git/config"]
+                   "./.cursor", "./.cursor/hooks.json", "./.cursor/mcp.json", "./.codex", "./.codex/hooks.json", "./.gemini",
+                   "./.gemini/settings.json", "./.github/hooks", "./.github/hooks/verfy.json", "./.windsurf", "./.windsurf/hooks.json",
+                   "./.vscode/mcp.json", "./.git/hooks", "./.git/config"]
 AGENT_WRITES = ["~/.claude", "~/.claude.json"]
+
+
+def agent_kind(command: list[str] | None) -> str:
+    """Which agent a sandboxed command starts, by its name; anything else gets Claude Code's needs, as before."""
+    name = Path(command[0]).name.lower() if command and command[0] else ""
+    for suffix in (".exe", ".cmd", ".ps1"):
+        name = name.removesuffix(suffix)
+    return name if name in AGENT_PROFILES else "claude"
+
+
+def _profile(agent) -> tuple:
+    if not agent:
+        return (), [], []
+    return AGENT_PROFILES[agent if isinstance(agent, str) and agent in AGENT_PROFILES else "claude"]
 
 
 def scopes(cwd: Path, home: Path) -> list[Path]:
@@ -138,7 +162,7 @@ def _host(host: str) -> str:
     return f"[{host}]" if host.count(":") >= 2 and not host.startswith("[") else host
 
 
-def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None, agent: bool = False) -> dict:
+def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None, agent: bool | str = False) -> dict:
     """The runtime's settings. It allows no host and no write that nobody listed, so only reads need naming here.
 
     With ``agent`` the command is an agent whose Verfy hook runs inside the sandbox too, so Verfy's folder stays open to
@@ -149,21 +173,21 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
     deny_read += [f"{h.as_posix()}/{p[2:]}" for h in windows_homes() for p in CREDENTIALS]
     return {
         "network": {
-            "allowedDomains": _unique(_host(h) for h in [*network.get("allow", []), *(AGENT_HOSTS if agent else []), *hosts]),
+            "allowedDomains": _unique(_host(h) for h in [*network.get("allow", []), *_profile(agent)[1], *hosts]),
             "deniedDomains": _unique(_host(h) for h in network.get("deny", [])),
         },
         "filesystem": {
             "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),
             "allowRead": [],
-            "allowWrite": _unique([".", *(AGENT_WRITES + guarded if agent else []), *writes]),
+            "allowWrite": _unique([".", *(list(_profile(agent)[2]) + guarded if agent else []), *writes]),
             "denyWrite": _unique([*PROJECT_CONTROL, *([] if agent else guarded)]),
         },
     }
 
 
-def runtime_env(env, allow=(), agent: bool = False) -> dict[str, str]:
+def runtime_env(env, allow=(), agent: bool | str = False) -> dict[str, str]:
     """The environment a sandboxed command gets. A sandbox that cannot read ~/.aws must not hand over AWS_SECRET_ACCESS_KEY."""
-    prefixes = BASE_ENV_PREFIXES + (AGENT_ENV_PREFIXES if agent else ())
+    prefixes = BASE_ENV_PREFIXES + tuple(_profile(agent)[0])
     keep = {k: v for k, v in env.items() if k in BASE_ENV or k in allow or k.startswith(prefixes)}
     return {**keep, MARK_ENV: "srt"}
 

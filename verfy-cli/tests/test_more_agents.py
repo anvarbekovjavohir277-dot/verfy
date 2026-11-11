@@ -284,6 +284,164 @@ class InstallTests(unittest.TestCase):
             cli.main(["hook", "install", "--codex", "--gemini"])
 
 
+CODEX_TOML = '''# my Codex settings
+model = "gpt-5"
+
+[mcp_servers.github]
+# the official server
+command = "npx"
+args = [
+  "-y",
+  "@modelcontextprotocol/server-github@1.0.0",  # pinned
+]
+env = { GITHUB_TOKEN = "x" }
+
+[mcp_servers."my docs"]
+command = 'uvx'
+args = ["docs-mcp"]
+startup_timeout_sec = 20
+
+[mcp_servers.remote]
+url = "https://mcp.example.com/mcp"
+bearer_token_env_var = "MCP_TOKEN"
+
+[profiles.fast]
+model = "gpt-5-mini"
+'''
+
+
+@unittest.skipIf(sys.version_info < (3, 11), "TOML needs Python 3.11")
+class CodexTomlWrapTests(unittest.TestCase):
+    def test_servers_go_behind_the_gateway_and_the_rest_stays(self):
+        import tomllib
+        from verfy import wrapcfg
+        text, cfg, wrapped, left = wrapcfg.wrap_text(Path("config.toml"), CODEX_TOML, "verfy")
+        self.assertEqual(wrapped, ["github", "my docs"])
+        self.assertIn("remote", left)
+        data = tomllib.loads(text)
+        gh = data["mcp_servers"]["github"]
+        self.assertEqual((gh["command"], gh["args"]), ("verfy", ["proxy", "--name", "github", "--", "npx", "-y", "@modelcontextprotocol/server-github@1.0.0"]))
+        self.assertEqual(gh["env"], {"GITHUB_TOKEN": "x"})
+        self.assertEqual(data["mcp_servers"]["my docs"]["args"], ["proxy", "--name", "my docs", "--", "uvx", "docs-mcp"])
+        self.assertEqual(data["mcp_servers"]["my docs"]["startup_timeout_sec"], 20)
+        self.assertEqual(data["mcp_servers"]["remote"], {"url": "https://mcp.example.com/mcp", "bearer_token_env_var": "MCP_TOKEN"})
+        self.assertEqual((data["model"], data["profiles"]["fast"]["model"]), ("gpt-5", "gpt-5-mini"))
+        self.assertIn("# my Codex settings", text)
+        self.assertIn("# the official server", text)
+        # a second run changes nothing
+        again, _, wrapped2, _ = wrapcfg.wrap_text(Path("config.toml"), text, "verfy")
+        self.assertEqual((again, wrapped2), (text, []))
+
+    def test_windows_paths_and_quotes_survive(self):
+        import tomllib
+        from verfy import wrapcfg
+        exe = 'C:\\Users\\a "b"\\verfy.exe'
+        text, _, _, _ = wrapcfg.wrap_text(Path("config.toml"), '[mcp_servers.fs]\ncommand = "node"\nargs = ["C:\\\\srv\\\\index.js"]\n', exe)
+        spec = tomllib.loads(text)["mcp_servers"]["fs"]
+        self.assertEqual((spec["command"], spec["args"][-1]), (exe, "C:\\srv\\index.js"))
+
+    def test_the_wrap_command_reads_toml(self):
+        import tomllib
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = tmp / "config.toml"
+        path.write_text(CODEX_TOML, "utf-8")
+        from contextlib import redirect_stdout
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(["wrap", str(path), "--write"]), 0)
+        self.assertEqual(tomllib.loads(path.read_text("utf-8"))["mcp_servers"]["github"]["args"][:3], ["proxy", "--name", "github"])
+        self.assertEqual(path.with_suffix(".toml.verfy-backup").read_text("utf-8"), CODEX_TOML)
+
+
+class SetupTests(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.no_path = mock.patch("shutil.which", return_value=None)
+        self.no_path.start()
+        self.addCleanup(self.no_path.stop)
+
+    def put(self, rel, data):
+        p = self.home / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(data if isinstance(data, str) else json.dumps(data), "utf-8")
+        return p
+
+    def cli(self, *args):
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with mock.patch.object(Path, "home", return_value=self.home), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = cli.main(["setup", *args])
+        return code, out.getvalue()
+
+    def test_one_command_sets_up_every_agent_it_finds(self):
+        from verfy import agents
+        self.put(".claude/x", "")
+        self.put(".cursor/mcp.json", {"mcpServers": {"fs": {"command": "npx", "args": ["-y", "fs@1.0.0"]},
+                                                     "login": {"url": "https://mcp.example.com/mcp"},
+                                                     "keyed": {"url": "https://k.example.com/mcp", "headers": {"Authorization": "Bearer ${K}"}}}})
+        self.put(".gemini/settings.json", {"theme": "x", "mcpServers": {"db": {"command": "uvx", "args": ["db-mcp"]}}})
+        self.put(".codeium/windsurf/mcp_config.json", {"mcpServers": {}})
+        self.assertEqual([a.key for a in agents.found(self.home, lambda c: None)], ["claude-code", "cursor", "gemini", "windsurf"])
+        code, out = self.cli()
+        self.assertEqual(code, 0)
+        self.assertIn("Nothing changed yet", out)
+        self.assertFalse((self.home / ".claude" / "settings.json").exists())
+        code, out = self.cli("--write")
+        self.assertEqual(code, 0, out)
+        for rel, cmd in ((".claude/settings.json", "verfy hook pre-tool-use"), (".cursor/hooks.json", "verfy hook cursor"),
+                         (".gemini/settings.json", "verfy hook gemini"), (".codeium/windsurf/hooks.json", "verfy hook windsurf")):
+            self.assertIn(cmd, (self.home / rel).read_text("utf-8"), rel)
+        cursor = json.loads((self.home / ".cursor/mcp.json").read_text("utf-8"))["mcpServers"]
+        self.assertEqual(cursor["fs"]["args"][:3], ["proxy", "--name", "fs"])
+        self.assertEqual(cursor["keyed"]["args"][:3], ["proxy", "--name", "keyed"])
+        self.assertEqual(cursor["login"], {"url": "https://mcp.example.com/mcp"})  # OAuth: left alone
+        gemini = json.loads((self.home / ".gemini/settings.json").read_text("utf-8"))
+        self.assertEqual((gemini["theme"], gemini["mcpServers"]["db"]["command"]), ("x", "verfy"))
+        self.assertTrue((self.home / ".cursor/mcp.json.verfy-backup").exists())
+        # running it again finds nothing to do
+        code, out = self.cli()
+        self.assertIn("already set up", out)
+
+    def test_one_agent_by_name_and_hooks_only(self):
+        self.put(".gemini/settings.json", {"mcpServers": {"db": {"command": "uvx", "args": ["db-mcp"]}}})
+        code, _ = self.cli("--agent", "codex", "--agent", "gemini", "--hooks-only", "--write")
+        self.assertEqual(code, 0)
+        self.assertTrue((self.home / ".codex/hooks.json").exists())
+        self.assertEqual(json.loads((self.home / ".gemini/settings.json").read_text("utf-8"))["mcpServers"]["db"]["command"], "uvx")
+        self.assertFalse((self.home / ".claude/settings.json").exists())
+
+    def test_a_broken_file_stops_only_itself(self):
+        self.put(".cursor/hooks.json", "{not json")
+        self.put(".codex/x", "")
+        code, out = self.cli("--write")
+        self.assertEqual(code, 1)
+        self.assertIn("not changed", out)
+        self.assertEqual((self.home / ".cursor/hooks.json").read_text("utf-8"), "{not json")
+        self.assertTrue((self.home / ".codex/hooks.json").exists())
+
+    def test_nothing_found(self):
+        code, out = self.cli()
+        self.assertEqual(code, 0)
+        self.assertIn("No coding agent found", out)
+
+
+class SandboxProfileTests(unittest.TestCase):
+    def test_each_agent_gets_its_own_key_service_and_folder(self):
+        from verfy import sandbox
+        self.assertEqual([sandbox.agent_kind([c]) for c in ("codex", "/usr/bin/gemini", "copilot.cmd", "claude", "python", None)],
+                         ["codex", "gemini", "copilot", "claude", "claude", "claude"])
+        s = sandbox.runtime_settings({}, home=Path("/x/home"), agent="codex")
+        self.assertIn("api.openai.com", s["network"]["allowedDomains"])
+        self.assertNotIn("api.anthropic.com", s["network"]["allowedDomains"])
+        self.assertIn("~/.codex", s["filesystem"]["allowWrite"])
+        self.assertNotIn("~/.claude", s["filesystem"]["allowWrite"])
+        env = sandbox.runtime_env({"OPENAI_API_KEY": "k", "ANTHROPIC_API_KEY": "a", "AWS_SECRET_ACCESS_KEY": "s"}, agent="codex")
+        self.assertEqual(set(env) - {sandbox.MARK_ENV}, {"OPENAI_API_KEY"})
+        self.assertIn("./.codex/hooks.json", sandbox.runtime_settings({}, agent="codex")["filesystem"]["denyWrite"])
+        self.assertEqual(sandbox.runtime_settings({}, agent=True)["network"]["allowedDomains"], ["api.anthropic.com"])
+
+
 class PublicKeyFlagTests(unittest.TestCase):
     def test_a_public_key_that_starts_with_a_dash(self):
         from contextlib import redirect_stdout
