@@ -230,7 +230,7 @@ def _init_mcp_summary() -> None:
         return
     servers = report["servers"]
     if not servers:
-        print("MCP servers   none found (looked for .mcp.json, ~/.claude.json, Cursor and Claude Desktop configs)")
+        print("MCP servers   none found (looked in the MCP configs of Claude Code, Cursor, Codex, Gemini CLI, VS Code, Copilot, Windsurf and Claude Desktop)")
         return
     worst = [s["findings"][0]["severity"] for s in servers if s["findings"]]
     counts = ", ".join(f"{worst.count(sev)} {sev}" for sev in ("critical", "high", "medium", "low") if worst.count(sev))
@@ -389,7 +389,7 @@ def _scan_one(name: str, data, args) -> dict:
 def print_config_scan(report: dict) -> None:
     print(c("Verfy Scan (static config check)", "1") + "  " + c(report["note"], "2"))
     if not report["configs"]:
-        print("  No MCP config files found (looked for .mcp.json, ~/.claude.json, Cursor and Claude Desktop configs).")
+        print("  No MCP config files found (looked in the MCP configs of Claude Code, Cursor, Codex, Gemini CLI, VS Code, Copilot, Windsurf and Claude Desktop).")
     for cfg in report["configs"]:
         print(f"  config  {cfg['path']}  ({cfg['source']})" + (c("  " + cfg["error"], "31") if cfg.get("error") else ""))
     for s in report["servers"]:
@@ -1137,7 +1137,8 @@ def cmd_lock_check(args) -> int:
     """Read the tools of every server in an MCP config (stdio servers are started, remote ones asked over HTTP) and compare them with verfy.lock (for CI)."""
     cfg = Path(args.config)
     if not cfg.is_file():
-        print(f"verfy lock check: no such config file: {cfg}", file=sys.stderr)
+        print(f"verfy lock check: no such config file: {cfg}. Run it in the folder that has the MCP config, or pass --config FILE"
+              " (verfy scan --discover lists the configs on this machine).", file=sys.stderr)
         return 3
     found = cfgscan.read_configs([("given", cfg)])
     if not found or found[0].get("error"):
@@ -1680,11 +1681,14 @@ def cmd_doctor(args) -> int:
     for agent, (label, where, _add, folder) in hooks.INSTALL.items():
         wanted = claude_here if agent == "claude-code" else Path.home().joinpath(*folder).is_dir()
         places += [(label, where(False), agent, wanted), (label, where(True), agent, False)]
+    unguarded: list[str] = []
     for label, path, agent, wanted in places:
         state = _hook_state(path, agent)
         if state == "off" and not path.exists() and not wanted:
             continue
         print(f"{label:<13} hook {state}  ({path})")
+        if state == "off" and wanted and agent != "claude-code" and not agentlib.system_hooked(agent):
+            unguarded.append(label)
         if state == "unreadable":
             problems.append(f"{path} is not valid JSON, so the agent may not run the hook")
     user_claude = _hook_state(hooks.settings_path(False), "claude-code")
@@ -1695,7 +1699,7 @@ def cmd_doctor(args) -> int:
     if claude_here and "on" not in (user_claude, project_claude) and not machine:
         problems.append("Claude Code is installed but no Verfy hook is set, so its tool calls are not checked. Fix: verfy setup --write")
     risky = posturelib.check(Path.home(), Path.cwd())
-    print(f"Agent settings {posturelib.summary(risky)}")
+    print(f"{'Settings':<13} {posturelib.summary(risky)}")
     for f in risky:
         if f["severity"] == "high" and "hook" in f["setting"].lower():
             problems.append(f"{f['agent']}: {f['setting']} in {f['path']}: {f['why']} Fix: {f['fix']}")
@@ -1712,11 +1716,18 @@ def cmd_doctor(args) -> int:
     if team:
         auto = "uploads on their own" if team.get("auto_sync") is True else "uploads only with `verfy sync`"
         print(f"Verfy Cloud   enrolled with {team['url']} as {team['device_id']}; {auto}")
+    tip = (f"{c('TIP', '33;1')}      {', '.join(dict.fromkeys(unguarded))} {'is' if len(set(unguarded)) == 1 else 'are'} installed without "
+           "Verfy's hook. `verfy setup` shows what it would add; `verfy setup --write` adds it.") if unguarded else None
     if problems:
         print()
         for p in problems:
             print(f"{c('PROBLEM', '31;1')}  {p}")
+        if tip:
+            print(tip)
         return 1
+    if tip:
+        print(f"\n{tip}")
+        return 0
     print(f"\n{c('OK', '32;1')}  nothing to fix. A hook removed later stops receipts; with Verfy Cloud, Dashboard > Devices shows a device that went quiet.")
     return 0
 
@@ -1902,18 +1913,28 @@ def cmd_demo(args) -> int:
     res = verify_ledger(read_ledger(tmp / "ledger.jsonl"), key.public)
     print()
     print(f"Ledger: {res['count']} signed receipts, " + (c("chain verified", "32;1") if res["ok"] else c("verification FAILED", "31;1")))
-    print(f"Try:    VERFY_HOME={tmp} verfy ledger show")
+    print(f"Try:    $env:VERFY_HOME = \"{tmp}\"; verfy ledger show" if os.name == "nt" else f"Try:    VERFY_HOME={tmp} verfy ledger show")
     return 0 if res["ok"] else 1
 
 
 # ---------------------------------------------------------------- main
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="verfy", description="Verfy: scan MCP tools, pre-check agent actions, sign receipts.")
+    ap = argparse.ArgumentParser(
+        prog="verfy",
+        description="Verfy: scan MCP tools, pre-check agent actions, sign receipts.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="start here:\n"
+               "  verfy demo             see Verfy stop a poisoned tool and risky calls (nothing is installed)\n"
+               "  verfy init             signing key and policy; in a terminal it offers to set up every agent found\n"
+               "  verfy setup --write    guard every coding agent on this computer: hooks and MCP gateway\n"
+               "  verfy doctor           is everything still in place?  (verfy posture: risky agent settings)\n"
+               "\ndocs: https://verfy.dev/docs",
+    )
     ap.add_argument("--version", action="version", version=f"verfy {__version__}")
     sub = ap.add_subparsers(dest="command_name", metavar="command")
 
-    p = sub.add_parser("init", help="set up this machine: signing key, starter policy, the MCP servers found, the Claude Code hook and Verfy Cloud")
+    p = sub.add_parser("init", help="set up this machine: signing key, starter policy, the MCP servers found, every agent's hook (asked) and Verfy Cloud")
     p.add_argument("--project", action="store_true", help="write verfy.policy.json (and the hook, with --hook) in this folder instead of ~/.verfy")
     p.add_argument("--force", action="store_true")
     p.add_argument("--template", choices=list(TEMPLATES), help="start from a ready-made policy (see `verfy policy templates`)")
@@ -2226,7 +2247,9 @@ def main(argv: list[str] | None = None) -> int:
     except BrokenPipeError:
         return 0
     except (FileNotFoundError, PermissionError) as e:
-        print(f"verfy: {e}", file=sys.stderr)
+        what = "no such file" if isinstance(e, FileNotFoundError) else "not allowed to open"
+        name = f"verfy {args.command_name}" if getattr(args, "command_name", None) else "verfy"
+        print(f"{name}: {what}: {e.filename}" if getattr(e, "filename", None) else f"{name}: {e}", file=sys.stderr)
         return 3
     except teamlib.TeamError as e:
         print(f"verfy: {e}", file=sys.stderr)

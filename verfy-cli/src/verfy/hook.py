@@ -432,7 +432,7 @@ def _output(verdict: str, reason: str) -> dict:
 
 
 def _reason(decision: dict, receipt: dict | list[dict] | None) -> str:
-    rules = "; ".join(f"[{f['rule']}] {f['message']}" for f in decision["findings"]) or "no rule matched"
+    rules = "; ".join(f"[{f['rule']}] {f['message'].rstrip('.')}" for f in decision["findings"]) or "no rule matched"
     receipts = receipt if isinstance(receipt, list) else [receipt] if receipt else []
     tail = (" Receipt " if len(receipts) == 1 else " Receipts ") + ", ".join(f"{r['id']} (#{r['seq']})" for r in receipts) + "." if receipts else ""
     if decision["verdict"] == "deny":
