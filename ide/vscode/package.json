@@ -1,0 +1,84 @@
+{
+  "name": "verfy",
+  "displayName": "Verfy",
+  "description": "Guard the AI agents in your editor: Verfy checks each tool call, locks MCP tools, signs a receipt for every call it checks, and can open the terminal inside a sandbox.",
+  "version": "0.20.0",
+  "publisher": "verfy",
+  "license": "MIT",
+  "icon": "icon.png",
+  "homepage": "https://verfy.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anvarbekovjavohir277-dot/verfy"
+  },
+  "bugs": {
+    "url": "https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "AI"
+  ],
+  "keywords": [
+    "mcp",
+    "security",
+    "ai agent",
+    "copilot",
+    "sandbox"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "verfy.setup",
+        "title": "Set up every agent on this computer",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.sandboxOn",
+        "title": "Open the terminal inside the sandbox",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.sandboxOff",
+        "title": "Stop opening the terminal inside the sandbox",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.doctor",
+        "title": "Check this computer (doctor)",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.receipts",
+        "title": "Show the latest receipts",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.install",
+        "title": "Install the Verfy CLI",
+        "category": "Verfy"
+      }
+    ],
+    "configuration": {
+      "title": "Verfy",
+      "properties": {
+        "verfy.path": {
+          "type": "string",
+          "default": "",
+          "description": "The verfy command, if it is not on PATH (for example C:\\Users\\you\\AppData\\Local\\Programs\\verfy\\verfy.exe)."
+        },
+        "verfy.offerSetup": {
+          "type": "boolean",
+          "default": true,
+          "description": "On start, offer to set up the agents that Verfy does not guard yet."
+        }
+      }
+    }
+  }
+}

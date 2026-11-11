@@ -426,6 +426,52 @@ class SetupTests(unittest.TestCase):
         self.assertIn("No coding agent found", out)
 
 
+class SandboxTerminalTests(unittest.TestCase):
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.home, True)
+
+    def settings(self, app, data=None):
+        p = self.home / ".config" / app / "User" / "settings.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if data is not None:
+            p.write_text(data if isinstance(data, str) else json.dumps(data), "utf-8")
+        return p
+
+    def test_on_and_off_keep_the_other_settings(self):
+        from verfy import agents
+        code = self.settings("Code", {"editor.fontSize": 14, "terminal.integrated.profiles.linux": {"mine": {"path": "fish"}}})
+        cursor = self.settings("Cursor")
+        items = agents.apply(agents.terminal_plan(self.home, True, "linux", "/usr/bin/verfy", None))
+        self.assertEqual([i["agent"].label for i in items], ["VS Code", "Cursor"])
+        data = json.loads(code.read_text("utf-8"))
+        self.assertEqual(data["editor.fontSize"], 14)
+        self.assertEqual(data["terminal.integrated.defaultProfile.linux"], "Verfy sandbox")
+        self.assertEqual(data["terminal.integrated.profiles.linux"]["Verfy sandbox"], {"path": "/usr/bin/verfy", "args": ["run", "--sandbox", "--", "bash", "-l"]})
+        self.assertIn("mine", data["terminal.integrated.profiles.linux"])
+        self.assertTrue(cursor.exists())
+        self.assertEqual([i["state"] for i in agents.terminal_plan(self.home, True, "linux", "/usr/bin/verfy", None)], ["on", "on"])
+        agents.apply(agents.terminal_plan(self.home, False, "linux", "/usr/bin/verfy", None))
+        data = json.loads(code.read_text("utf-8"))
+        self.assertNotIn("terminal.integrated.defaultProfile.linux", data)
+        self.assertEqual(data["terminal.integrated.profiles.linux"], {"mine": {"path": "fish"}})
+
+    def test_windows_goes_through_wsl_or_not_at_all(self):
+        from verfy import agents
+        self.settings("Code", {})
+        item = agents.terminal_plan(self.home, True, "win32", "verfy", "C:\\Windows\\System32\\wsl.exe")[0]
+        self.assertEqual(json.loads(item["text"])["terminal.integrated.profiles.windows"]["Verfy sandbox"]["path"], "C:\\Windows\\System32\\wsl.exe")
+        self.assertEqual(agents.terminal_plan(self.home, True, "win32", "verfy", None)[0]["state"], "error")
+        self.assertIn("zsh", agents.terminal_plan(self.home, True, "darwin", "verfy", None)[0]["text"])
+
+    def test_a_settings_file_with_comments_is_not_rewritten(self):
+        from verfy import agents
+        p = self.settings("Code", '{\n  // my font\n  "editor.fontSize": 14,\n}')
+        item = agents.apply(agents.terminal_plan(self.home, True, "linux", "verfy", None))[0]
+        self.assertEqual(item["state"], "error")
+        self.assertIn("// my font", p.read_text("utf-8"))
+
+
 class SandboxProfileTests(unittest.TestCase):
     def test_each_agent_gets_its_own_key_service_and_folder(self):
         from verfy import sandbox

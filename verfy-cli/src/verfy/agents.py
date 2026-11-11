@@ -119,3 +119,95 @@ def apply(items: list[dict]) -> list[dict]:
         except OSError as e:
             item.update(state="error", error=f"cannot write it: {e}")
     return items
+
+
+# ---------------------------------------------------------------- IDE terminal inside the sandbox
+
+# The IDE itself is a desktop app and cannot run inside the sandbox runtime, but its AI agent runs commands in the
+# IDE's terminal. Making that terminal start inside `verfy run --sandbox` closes what those commands can write and
+# reach. Opt in with `verfy setup --sandbox-terminal on`: a sandboxed terminal also stops installs that need a host
+# your policy does not allow.
+IDES = (("Code", "VS Code"), ("Cursor", "Cursor"), ("Windsurf", "Windsurf"))
+APP_DIRS = (("AppData", "Roaming"), ("Library", "Application Support"), (".config",))
+PROFILE = "Verfy sandbox"
+
+
+class IDE:
+    def __init__(self, label: str):
+        self.key, self.label = "ide-" + label.lower().replace(" ", ""), label
+
+
+def ide_settings(home: Path) -> list[tuple[IDE, Path]]:
+    """Each installed IDE's user settings file (VS Code, Cursor, Windsurf), found by its settings folder."""
+    out = []
+    for folder, label in IDES:
+        for base in APP_DIRS:
+            user = home.joinpath(*base, folder, "User")
+            if user.is_dir():
+                out.append((IDE(label), user / "settings.json"))
+                break
+    return out
+
+
+def platform_key(platform: str) -> str:
+    return "windows" if platform.startswith("win") else ("osx" if platform == "darwin" else "linux")
+
+
+def terminal_profile(platform: str, exe: str, wsl: str | None) -> dict | None:
+    """The terminal profile that opens a shell inside the sandbox. On Windows the sandbox runs inside WSL2."""
+    key = platform_key(platform)
+    if key == "windows":
+        if not wsl:
+            return None
+        return {"path": wsl, "args": ["--exec", "bash", "-lc", "exec verfy run --sandbox -- bash -l"]}
+    shell = "zsh" if key == "osx" else "bash"
+    return {"path": exe, "args": ["run", "--sandbox", "--", shell, "-l"]}
+
+
+def with_sandbox_terminal(settings: dict, on: bool, platform: str, profile: dict | None) -> tuple[dict, bool]:
+    key = platform_key(platform)
+    out = json.loads(json.dumps(settings))
+    profiles_key, default_key = f"terminal.integrated.profiles.{key}", f"terminal.integrated.defaultProfile.{key}"
+    profiles = out.get(profiles_key) if isinstance(out.get(profiles_key), dict) else {}
+    if on:
+        if profile is None:
+            raise ValueError("no sandbox here: on Windows it needs WSL2 with verfy and srt inside it")
+        if profiles.get(PROFILE) == profile and out.get(default_key) == PROFILE:
+            return out, False
+        out[profiles_key] = {**profiles, PROFILE: profile}
+        out[default_key] = PROFILE
+        return out, True
+    changed = False
+    if PROFILE in profiles:
+        profiles = {k: v for k, v in profiles.items() if k != PROFILE}
+        if profiles:
+            out[profiles_key] = profiles
+        else:
+            out.pop(profiles_key, None)
+        changed = True
+    if out.get(default_key) == PROFILE:
+        out.pop(default_key)
+        changed = True
+    return out, changed
+
+
+def terminal_plan(home: Path, on: bool, platform: str, exe: str, wsl: str | None) -> list[dict]:
+    """One item per IDE settings file. A settings file with comments is not rewritten: the comments would be lost."""
+    profile = terminal_profile(platform, exe, wsl)
+    out = []
+    for ide, path in ide_settings(home):
+        item = {"agent": ide, "kind": "terminal", "path": path}
+        try:
+            text = path.read_text("utf-8-sig") if path.exists() else "{}"
+            try:
+                current = json.loads(text) if text.strip() else {}
+            except ValueError:
+                raise ValueError("it has comments or trailing commas; add the profile by hand from `verfy setup --sandbox-terminal on`") from None
+            if not isinstance(current, dict):
+                raise ValueError("not a JSON object")
+            updated, changed = with_sandbox_terminal(current, on, platform, profile)
+            item.update(state="add" if changed else "on", text=json.dumps(updated, indent=4, ensure_ascii=False) + "\n", on=on)
+        except (OSError, ValueError) as e:
+            item.update(state="error", error=f"cannot change it: {e}")
+        out.append(item)
+    return out

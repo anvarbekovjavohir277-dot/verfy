@@ -17,6 +17,7 @@ FILES = [
     ("verfy-cli/pyproject.toml", r'(?m)^version = "[^"]+"$', 'version = "{v}"'),
     ("verfy-cli/src/verfy/__init__.py", r'__version__ = "[^"]+"', '__version__ = "{v}"'),
     ("plugins/verfy/.claude-plugin/plugin.json", r'"version": "[^"]+"', '"version": "{v}"'),
+    ("ide/vscode/package.json", r'"version": "[^"]+"', '"version": "{v}"'),
     ("verfy-cli/README.md", r"verfy==\d+\.\d+\.\d+", "verfy=={v}"),
 ]
 

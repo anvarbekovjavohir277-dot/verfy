@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MIRROR = {
     ".claude-plugin/marketplace.json": ".claude-plugin/marketplace.json",
     "plugins/verfy": "plugins/verfy",
+    "ide/vscode": "ide/vscode",
     "SECURITY.md": "SECURITY.md",
     "TRADEMARKS.md": "TRADEMARKS.md",
     "CLA.md": "CLA.md",

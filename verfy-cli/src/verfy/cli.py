@@ -1444,10 +1444,14 @@ def _short(path: Path) -> str:
 
 
 def _setup_line(item: dict) -> str:
-    what = "hook" if item["kind"] == "hook" else "MCP"
+    what = {"hook": "hook", "mcp": "MCP", "terminal": "term"}[item["kind"]]
     state = item["state"]
     if state == "error":
         note = item["error"]
+    elif item["kind"] == "terminal":
+        on = item["on"]
+        note = (("the terminal already opens inside the sandbox" if on else "the terminal is not sandboxed") if state == "on"
+                else ("open the terminal inside the sandbox, so the agent's commands run there" if on else "stop opening the terminal inside the sandbox"))
     elif item["kind"] == "hook":
         note = "hook already there" if state == "on" else "add the hook: every tool call checked, with a signed receipt"
     elif state == "wrap":
@@ -1460,7 +1464,7 @@ def _setup_line(item: dict) -> str:
 
 def _print_setup_plan(items: list[dict]) -> None:
     labels = list(dict.fromkeys(i["agent"].label for i in items))
-    print(f"Agents found  {', '.join(labels) or 'none'}")
+    print(f"{'IDEs found' if items and items[0]['kind'] == 'terminal' else 'Agents found'}  {', '.join(labels) or 'none'}")
     for item in items:
         print(_setup_line(item))
         for name, why in (item.get("left") or {}).items():
@@ -1473,6 +1477,8 @@ def _print_setup_done(items: list[dict]) -> None:
         label = item["agent"].label
         if item["state"] == "error":
             print(f"{label:<13} {_short(item['path'])}  (not changed: {item['error']})")
+        elif item.get("done") and item["kind"] == "terminal":
+            print(f"{label:<13} {_short(item['path'])}  ({'terminal opens inside the sandbox' if item['on'] else 'sandboxed terminal removed'}; a backup is kept)")
         elif item.get("done") and item["kind"] == "hook":
             print(f"{label:<13} {_short(item['path'])}  (hook added, a backup of the old file is kept)")
         elif item.get("done"):
@@ -1483,12 +1489,26 @@ def _print_setup_done(items: list[dict]) -> None:
     for key, note in INSTALL_NOTES.items():
         if key in keys:
             print(f"              {note}")
-    if keys:
+    if any(i.get("done") and i["kind"] == "terminal" for i in items):
+        print("              Open a new terminal in the IDE (or restart it). A command that needs a host your policy does not allow is"
+              " stopped there: add the host to network.allow in your policy.")
+    if keys - {i["agent"].key for i in items if i["kind"] == "terminal"}:
         print(f"              Restart the agents that are open. {CHECK_NOTE}")
 
 
 def cmd_setup(args) -> int:
     home, cwd = Path.home(), Path.cwd()
+    if args.sandbox_terminal:
+        items = agentlib.terminal_plan(home, args.sandbox_terminal == "on", sys.platform, shutil.which("verfy") or "verfy", shutil.which("wsl.exe"))
+        if not items:
+            print("No IDE found here (looked for the settings of VS Code, Cursor and Windsurf).")
+            return 0
+        if any(i["state"] == "error" and "comments" in i["error"] for i in items):
+            profile = agentlib.terminal_profile(sys.platform, shutil.which("verfy") or "verfy", shutil.which("wsl.exe"))
+            key = agentlib.platform_key(sys.platform)
+            snippet = {f"terminal.integrated.profiles.{key}": {agentlib.PROFILE: profile}, f"terminal.integrated.defaultProfile.{key}": agentlib.PROFILE}
+            print("The profile to add by hand to settings.json:\n" + json.dumps(snippet, indent=4) + "\n")
+        return _setup_finish(args, items)
     agents = [agentlib.BY_KEY[k] for k in args.agent] if args.agent else agentlib.found(home)
     if not agents:
         print("No coding agent found here (looked for Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot, Windsurf and Claude Desktop).")
@@ -1497,10 +1517,15 @@ def cmd_setup(args) -> int:
     items = agentlib.plan(agents, home, cwd, args.project, "verfy" if args.project else (shutil.which("verfy") or "verfy"))
     if args.hooks_only:
         items = [i for i in items if i["kind"] == "hook"]
+    return _setup_finish(args, items)
+
+
+def _setup_finish(args, items: list[dict]) -> int:
     if not args.write:
         _print_setup_plan(items)
         todo = [i for i in items if i["state"] in ("add", "wrap")]
-        print("\n" + ("Nothing changed yet. Run `verfy setup --write` to do all of this; a backup of every changed file is kept."
+        again = "verfy setup" + (f" --sandbox-terminal {args.sandbox_terminal}" if getattr(args, "sandbox_terminal", None) else "") + " --write"
+        print("\n" + (f"Nothing changed yet. Run `{again}` to do all of this; a backup of every changed file is kept."
                       if todo else "Every agent found here is already set up."))
         return 1 if any(i["state"] == "error" for i in items) else 0
     _print_setup_done(agentlib.apply(items))
@@ -2022,6 +2047,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--project", action="store_true", help="this project's files (.claude, .codex, .gemini, .github/hooks, .mcp.json ...) instead of your home folder")
     p.add_argument("--agent", action="append", choices=[a.key for a in agentlib.AGENTS], help="only this agent, even if it was not found (repeat for more)")
     p.add_argument("--hooks-only", action="store_true", help="add the hooks and leave the MCP configs as they are")
+    p.add_argument("--sandbox-terminal", choices=["on", "off"], help="make the terminal of VS Code, Cursor and Windsurf open inside the sandbox, so their AI agents' commands run there (beta; on Windows through WSL2)")
     p.set_defaults(fn=cmd_setup)
 
     p = sub.add_parser("hook", help="the hook an agent runs before each tool call (pre-tool-use is Claude Code's), or `hook install`")

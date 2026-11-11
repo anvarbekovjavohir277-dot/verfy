@@ -18,6 +18,20 @@ verfy setup --write      # does it, keeping a backup of every file; run it again
 
 `verfy setup` finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot (CLI and VS Code), Windsurf and Claude Desktop. For each, it adds Verfy's hook and puts the MCP servers in that agent's config behind the gateway (scan, lock, pre-check, receipts). After that there is nothing to type: the agent asks Verfy before each tool call. `--agent codex` picks one agent, `--project` works on this folder's files, and `--hooks-only` leaves the MCP configs alone. A remote server that signs in with OAuth is left as it is. The sections below do the same thing one agent at a time.
 
+## In VS Code, Cursor and Windsurf (beta)
+
+Download `verfy-vscode.vsix` from the [latest release](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases/latest) and install it in the editor: Extensions > ... > Install from VSIX. The extension does the same as the commands here:
+- it installs the CLI if it is missing, in a terminal you can see;
+- it shows what `verfy setup` would change and runs it after you agree;
+- it shows in the status bar whether the agents are guarded.
+
+```bash
+verfy setup --sandbox-terminal on --write    # the editors' terminal opens inside the sandbox (beta; WSL2 on Windows)
+verfy setup --sandbox-terminal off --write   # back to the normal terminal
+```
+
+The editor itself cannot run inside the sandbox, but its AI agent runs commands in the editor's terminal. With the sandboxed terminal on, those commands can write only in the project and reach only the hosts your policy allows.
+
 ## Guard Claude Code
 
 ```bash
