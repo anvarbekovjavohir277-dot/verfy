@@ -68,6 +68,12 @@ def system_hooked(agent: str, platform: str | None = None) -> Path | None:
         return None
 
 
+def system_current(agent: str) -> bool:
+    """True when the machine-wide file for this agent already holds every hook this Verfy adds."""
+    item = next((i for i in system_plan(sys.platform, shutil.which("verfy")) if i["agent"].key == agent), None)
+    return item is not None and item["state"] == "on"
+
+
 def plan(agents: list[Agent], home: Path, cwd: Path, project: bool, exe: str) -> list[dict]:
     """What setup would change, one entry per file: {"agent", "kind": "hook"|"mcp", "path", "state", "text", ...}."""
     out = []
@@ -79,7 +85,11 @@ def plan(agents: list[Agent], home: Path, cwd: Path, project: bool, exe: str) ->
     for a in agents:
         machine = None if project else system_hooked(a.key)
         if a.hook and machine:
-            out.append({"agent": a, "kind": "system", "path": machine, "state": "on"})  # no second, user-level copy
+            # no second, user-level copy; an older machine-wide file is reported, since only an administrator can update it
+            current = system_current(a.key)
+            out.append({"agent": a, "kind": "system", "path": machine, "state": "on"} if current else
+                       {"agent": a, "kind": "system", "path": machine, "state": "error",
+                        "error": "the machine-wide hook is from an older Verfy: run `verfy setup --system --write` as administrator"})
         elif a.hook:
             _label, where, add, _dirs = hooks.INSTALL[a.hook]
             path = where(project, cwd) if project else _home_path(where, home)

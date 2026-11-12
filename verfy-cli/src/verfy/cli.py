@@ -1587,8 +1587,10 @@ def _setup_finish(args, items: list[dict]) -> int:
         _print_setup_plan(items)
         todo = [i for i in items if i["state"] in ("add", "wrap")]
         again = "verfy setup" + (f" --sandbox-terminal {args.sandbox_terminal}" if getattr(args, "sandbox_terminal", None) else "") + " --write"
+        broken = [i for i in items if i["state"] in ("error", "skipped")]
         print("\n" + (f"Nothing changed yet. Run `{again}` to do all of this; a backup of every changed file is kept."
-                      if todo else "Every agent found here is already set up."))
+                      if todo else (f"{len(broken)} file(s) above could not be read; fix them and run this again." if broken
+                                    else "Every agent found here is already set up.")))
         return 1 if any(i["state"] == "error" for i in items) else 0
     _print_setup_done(agentlib.apply(items))
     return 1 if any(i["state"] == "error" for i in items) else 0
@@ -1630,7 +1632,7 @@ def cmd_hook(args) -> int:
             if agent in INSTALL_NOTES:
                 print(f"{INSTALL_NOTES[agent]} (beta)\n{CHECK_NOTE}")
         return 0
-    agent = {"pre-tool-use": None, "cursor": "cursor"}.get(args.event, args.event)
+    agent = {"pre-tool-use": None, "cursor": "cursor", "prompt": None}.get(args.event, args.event)  # the prompt guard names its agent itself
     record = functools.partial(_hook_record, agent=agent) if agent else _hook_record
     return hooks.run_hook(args.event, record=record, get_policy=_hook_policy, fail_mode=_hook_fail_mode, home=verfy_home())
 

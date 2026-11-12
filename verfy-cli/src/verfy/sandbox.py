@@ -32,13 +32,16 @@ BASE_ENV = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "COLORTERM", "LA
 BASE_ENV_PREFIXES = ("LC_", "XDG_")
 AGENT_ENV_PREFIXES = ("ANTHROPIC_", "CLAUDE_")  # an agent cannot start without its own key
 AGENT_HOSTS = ["api.anthropic.com"]
-# what each agent needs to start inside the sandbox: its key, its service and its own folder. Found by the command's name.
+# what each agent needs to start inside the sandbox: its key, its service and its own folder, and the files in that folder
+# that hold Verfy's hook for it, which stay closed. Found by the command's name. Claude Code's settings.json stays open
+# as before, because Claude Code writes it itself; the guard denies the agent's own edits of it.
 AGENT_PROFILES = {
-    "claude": (AGENT_ENV_PREFIXES, AGENT_HOSTS, ["~/.claude", "~/.claude.json"]),
-    "codex": (("OPENAI_", "CODEX_"), ["api.openai.com", "chatgpt.com", "auth.openai.com"], ["~/.codex"]),
-    "gemini": (("GEMINI_", "GOOGLE_"), ["generativelanguage.googleapis.com", "cloudcode-pa.googleapis.com", "oauth2.googleapis.com"], ["~/.gemini"]),
+    "claude": (AGENT_ENV_PREFIXES, AGENT_HOSTS, ["~/.claude", "~/.claude.json"], []),
+    "codex": (("OPENAI_", "CODEX_"), ["api.openai.com", "chatgpt.com", "auth.openai.com"], ["~/.codex"], ["~/.codex/hooks.json"]),
+    "gemini": (("GEMINI_", "GOOGLE_"), ["generativelanguage.googleapis.com", "cloudcode-pa.googleapis.com", "oauth2.googleapis.com"], ["~/.gemini"],
+               ["~/.gemini/settings.json"]),
     "copilot": (("COPILOT_", "GH_", "GITHUB_"), ["api.githubcopilot.com", "api.individual.githubcopilot.com", "api.business.githubcopilot.com",
-                                                 "api.enterprise.githubcopilot.com", "api.github.com", "github.com"], ["~/.copilot"]),
+                                                 "api.enterprise.githubcopilot.com", "api.github.com", "github.com"], ["~/.copilot"], ["~/.copilot/hooks"]),
 }
 # in the folder a command may write to, but these decide what runs later, outside the sandbox. Closed whether or not they
 # exist, or a command could create one. The file under each folder makes the runtime hold a missing folder with an empty
@@ -60,7 +63,7 @@ def agent_kind(command: list[str] | None) -> str:
 
 def _profile(agent) -> tuple:
     if not agent:
-        return (), [], []
+        return (), [], [], []
     return AGENT_PROFILES[agent if isinstance(agent, str) and agent in AGENT_PROFILES else "claude"]
 
 
@@ -180,7 +183,7 @@ def runtime_settings(policy: dict, hosts=(), writes=(), home: Path | None = None
             "denyRead": _unique([*deny_read, *(policy.get("files") or {}).get("sensitive", [])]),
             "allowRead": [],
             "allowWrite": _unique([".", *(list(_profile(agent)[2]) + guarded if agent else []), *writes]),
-            "denyWrite": _unique([*PROJECT_CONTROL, *([] if agent else guarded)]),
+            "denyWrite": _unique([*PROJECT_CONTROL, *([] if agent else guarded), *_profile(agent)[3]]),
         },
     }
 

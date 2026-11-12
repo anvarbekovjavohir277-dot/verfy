@@ -76,7 +76,8 @@
         "verfy.path": {
           "type": "string",
           "default": "",
-          "description": "The verfy command, if it is not on PATH (for example C:\\Users\\you\\AppData\\Local\\Programs\\verfy\\verfy.exe)."
+          "description": "The verfy command, if it is not on PATH (for example C:\\Users\\you\\AppData\\Local\\Programs\\verfy\\verfy.exe).",
+          "scope": "machine"
         },
         "verfy.offerSetup": {
           "type": "boolean",
@@ -84,6 +85,15 @@
           "description": "On start, offer to set up the agents that Verfy does not guard yet."
         }
       }
+    }
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Verfy runs only the verfy command from your own settings or PATH.",
+      "restrictedConfigurations": [
+        "verfy.path"
+      ]
     }
   }
 }

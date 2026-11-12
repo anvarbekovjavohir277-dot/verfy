@@ -31,6 +31,7 @@ https://docs.github.com/en/copilot/reference/hooks-configuration, https://docs.w
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import shlex
@@ -50,7 +51,7 @@ CURSOR_EVENTS = ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
 # hooks.json entry per event: the hooks that decide fail closed; the prompt guard and the output filter must not stop
 # Cursor when they cannot run. preToolUse leaves Shell, Read and MCP calls to their own hooks, which already check them.
 CURSOR_ENTRY = {
-    "preToolUse": {"failClosed": True, "matcher": "^(?!Shell$|Read$|MCP)"},
+    "preToolUse": {"failClosed": True},  # no matcher: side_answer skips Shell, Read and MCP, which other hooks check
     "beforeSubmitPrompt": {"failClosed": False},
     "postToolUse": {"failClosed": False, "matcher": "^MCP"},
 }
@@ -152,6 +153,10 @@ READ_TOOLS = {"view", "read", "readfile", "notebookread"}
 WRITE_TOOLS = {"create", "createfile", "write", "writefile", "edit", "editfile", "multiedit", "replace", "strreplace",
                "replacestringinfile", "multireplacestringinfile", "inserteditintofile", "notebookedit"}
 FETCH_TOOLS = {"webfetch", "fetch", "fetchurl", "fetchwebpage"}
+# text typed into a shell session that is already running: checked as a command of its own
+SHELL_INPUT_TOOLS = {"writestdin", "writetoprocess", "writebash", "sendinput", "writeinput", "sendkeys"}
+INPUT_KEYS = ("chars", "input", "text", "data", "keys", "command")
+DELETE_TOOLS = {"delete", "deletefile", "remove", "removefile", "rm", "deletefiles"}
 PATH_KEYS = ("file_path", "filePath", "path", "absolute_path", "notebook_path", "target_file", "file")
 CONTENT_KEYS = ("content", "file_text", "fileText", "new_string", "newString", "new_str", "newStr", "new_source", "code", "text")
 NO_ASK = ("{agent} cannot wait for a person from a hook, so Verfy blocked this. Ask the user first; "
@@ -172,8 +177,16 @@ def _first(data: dict, keys: tuple[str, ...]) -> str:
 def _command(data: dict) -> str:
     cmd = data.get("command", data.get("cmd"))
     if isinstance(cmd, list) and all(isinstance(c, str) for c in cmd):
-        # ["bash", "-lc", "rm -rf ~"] is the script; anything else is quoted back into one line
-        return cmd[2] if len(cmd) >= 3 and cmd[1] in ("-c", "-lc", "-Command", "/c") else shlex.join(cmd)
+        if len(cmd) >= 3:
+            shell = Path(cmd[0].replace("\\", "/")).name.lower().removesuffix(".exe")
+            flag = cmd[1].lower()
+            # PowerShell and cmd.exe join every argument after -Command or /c into the command they run
+            if shell in ("powershell", "pwsh", "cmd") and flag in ("-command", "-c", "/c", "/k", "-commandwithargs"):
+                return " ".join(cmd[2:])
+            # ["bash", "-lc", "rm -rf ~"]: the script; any later arguments are only $0, $1, ...
+            if flag in ("-c", "-lc"):
+                return cmd[2]
+        return shlex.join(cmd)
     return cmd if isinstance(cmd, str) else ""
 
 
@@ -264,6 +277,18 @@ def tool_action(server: str, name: str, data: Any) -> dict | list[dict]:
         if not cmd:
             raise ValueError(f"no command in the {name} call")
         return {"server": server, "tool": "Shell", "arguments": {"command": cmd}}
+    if key in SHELL_INPUT_TOOLS:
+        typed = _first(data, INPUT_KEYS)
+        if not typed and not any(k in data for k in INPUT_KEYS):
+            raise ValueError(f"no input in the {name} call")
+        if not typed.strip():
+            return {"server": server, "tool": name, "arguments": {"input": typed}}  # Enter, an empty line
+        return {"server": server, "tool": "Shell", "arguments": {"command": typed}}
+    if key in DELETE_TOOLS:
+        path = _first(data, PATH_KEYS)
+        if not path:
+            raise ValueError(f"no file path in the {name} call")
+        return {"server": server, "tool": "delete_file", "arguments": {"path": path}}
     if key in READ_TOOLS:
         path = _first(data, PATH_KEYS)
         if not path:
@@ -300,8 +325,12 @@ def gemini_action(payload: dict) -> dict | list[dict]:
         tool = ctx.get("tool_name") or ctx.get("toolName") or name.removeprefix(f"mcp_{server}_")
         return {"server": server, "tool": str(tool), "arguments": data if isinstance(data, dict) else {"input": data}}
     if name.startswith("mcp_") and not name.startswith("mcp__"):
-        server, _, tool = name[len("mcp_"):].partition("_")
-        return {"server": server, "tool": tool or name, "arguments": data if isinstance(data, dict) else {"input": data}}
+        # mcp_<server>_<tool>, and either may hold "_": without mcp_context each way to split it is checked, so a rule for
+        # the right server always gets its say
+        parts = name[len("mcp_"):].split("_")
+        args = data if isinstance(data, dict) else {"input": data}
+        splits = [("_".join(parts[:i]), "_".join(parts[i:])) for i in range(1, len(parts))] or [(parts[0], parts[0])]
+        return [{"server": srv, "tool": tool, "arguments": args} for srv, tool in splits[:6]]
     return tool_action("gemini", name, data)
 
 
@@ -440,11 +469,6 @@ def _reason(decision: dict, receipt: dict | list[dict] | None) -> str:
     return f"Verfy: this action needs your approval: {rules}.{tail}"
 
 
-def evaluate(payload: dict, policy: dict, context: dict | None = None, to_action: Callable[[dict], dict] = action_from_payload) -> tuple[dict, dict]:
-    action = to_action(payload)
-    return action, check(action, policy, context)
-
-
 def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], record: Callable[..., dict | None] | None,
                      home: Path | None = None, to_action: Callable[[dict], dict] = action_from_payload) -> dict | None:
     if not isinstance(payload, dict):
@@ -459,23 +483,26 @@ def run_pre_tool_use(payload: Any, *, get_policy: Callable[[str | None], dict], 
     if not actions:
         raise ValueError("no action in the hook input")
     session = str(payload.get("session_id") or "ses_" + uuid.uuid4().hex[:12])
-    # one patch can change several files: each is checked and recorded, and the strictest answer wins
-    verdict, findings, receipts = "allow", [], []
-    for action in actions:
-        source = sessions.source_of(home, tracked) if tracked else None
-        decision = check(action, policy, {"untrusted": source} if source else None)
-        if tracked and decision["verdict"] != "deny":
+    # One patch can change several files. Each is checked and the strictest answer wins; then each is recorded with the
+    # outcome of the whole call, so a file that passed in a blocked patch is not recorded as written.
+    source = sessions.source_of(home, tracked) if tracked else None
+    checked = [(action, check(action, policy, {"untrusted": source} if source else None)) for action in actions]
+    verdicts = {d["verdict"] for _, d in checked}
+    verdict = "deny" if "deny" in verdicts else ("ask" if "ask" in verdicts else "allow")
+    status = {"allow": "pending", "ask": "asked", "deny": "blocked"}[verdict]
+    if tracked and verdict != "deny":
+        for action, decision in checked:
             read = sessions.outside_text(action, decision, policy)
             if read:
                 sessions.mark(home, tracked, read)
+    findings, receipts = [], []
+    for action, decision in checked:
         receipt = None
         if record is not None:
-            receipt = record(action=action, decision=decision, session=session, policy=policy,
-                             outcome={"status": "pending" if decision["verdict"] == "allow" else ("blocked" if decision["verdict"] == "deny" else "asked"), "result_sha256": None})
+            receipt = record(action=action, decision=decision, session=session, policy=policy, outcome={"status": status, "result_sha256": None})
         if decision["verdict"] != "allow":
             findings += decision["findings"]
             receipts += [receipt] if receipt else []
-            verdict = "deny" if "deny" in (verdict, decision["verdict"]) else "ask"
     if verdict == "allow":
         return None
     return _output(verdict, _reason({"verdict": verdict, "findings": findings}, receipts))
@@ -505,7 +532,7 @@ def _record_prompt(record: Callable[..., dict | None] | None, agent: str, payloa
     if record is None:
         return
     rules = sorted({h["id"] for h in scan_secrets(text)})
-    record(action={"server": agent, "tool": "submit_prompt", "arguments": {"prompt": text}},
+    record(agent=agent, action={"server": agent, "tool": "submit_prompt", "arguments": {"prompt": text}},
            decision={"verdict": "deny", "kind": "message", "findings": [{"rule": "VFY-PROMPT-001", "verdict": "deny", "message": reason}] +
                      [{"rule": r, "verdict": "deny", "message": "secret in the prompt"} for r in rules]},
            session=str(payload.get("session_id") or payload.get("conversation_id") or "ses_" + uuid.uuid4().hex[:12]),
@@ -530,7 +557,7 @@ def side_answer(event: str, payload: dict, get_policy: Callable[[str | None], di
             text = payload.get("prompt")
             reason = prompt_secret_reason(text, policy)
             if reason:
-                _record_prompt(record, "cursor" if event == "cursor" else "claude-code", payload, policy, reason, str(text))
+                _record_prompt(record, "cursor" if event == "cursor" else ("codex" if "turn_id" in payload else "claude-code"), payload, policy, reason, str(text))
         except Exception:  # noqa: BLE001 - see the docstring
             reason = None
         if event == "cursor":
@@ -542,7 +569,12 @@ def side_answer(event: str, payload: dict, get_policy: Callable[[str | None], di
             if policy.get("redact_output", True) is False:
                 return {}, 0
             raw = payload.get("tool_output")
-            value = json.loads(raw) if isinstance(raw, str) and raw[:1] in "[{" else raw
+            value = raw
+            if isinstance(raw, str) and raw[:1] in "[{":
+                try:
+                    value = json.loads(raw)
+                except ValueError:
+                    value = raw
             cleaned, hidden = redact_output(value)
             if not hidden:
                 return {}, 0
@@ -582,6 +614,8 @@ def run_hook(event: str, *, stdin: IO[str] | None = None, stdout: IO[str] | None
             if devin_hook_installed():
                 return 0
             _prepare, to_action, answer = AGENTS["devin"]
+            if record is not None:
+                record = functools.partial(record, agent="devin")
         out = run_pre_tool_use(payload, get_policy=get_policy, record=record, home=home, to_action=to_action)
     except Exception as e:  # noqa: BLE001 - every failure must become ask/deny, never allow
         mode = "ask"

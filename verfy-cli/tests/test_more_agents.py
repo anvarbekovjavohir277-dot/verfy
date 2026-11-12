@@ -142,8 +142,18 @@ class GeminiTests(unittest.TestCase):
     def test_mcp_server_from_context_or_name(self):
         a = hook.gemini_action(gemini("mcp_github_delete_repo", {}, mcp_context={"server_name": "github", "tool_name": "delete_repo"}))
         self.assertEqual((a["server"], a["tool"]), ("github", "delete_repo"))
-        a = hook.gemini_action(gemini("mcp_github_delete_repo", {}))
-        self.assertEqual((a["server"], a["tool"]), ("github", "delete_repo"))
+        splits = [(a["server"], a["tool"]) for a in hook.gemini_action(gemini("mcp_github_delete_repo", {}))]
+        self.assertIn(("github", "delete_repo"), splits)
+
+    def test_a_server_name_with_an_underscore_still_meets_its_rule(self):
+        global POLICY
+        saved = POLICY
+        try:
+            POLICY = load_policy({"home": "/home/you", "workspace": "/home/you/project", "tools": {"deny": ["my_db/*"]}})
+            out = run("gemini", gemini("mcp_my_db_drop_table", {}))[1]
+            self.assertEqual(out["decision"], "deny")
+        finally:
+            POLICY = saved
 
     def test_urls_in_a_web_fetch_prompt(self):
         actions = hook.gemini_action(gemini("web_fetch", {"prompt": "summarise https://a.example/x and https://b.example/y"}))
@@ -273,6 +283,78 @@ def cursor(event, **fields):
     return {"hook_event_name": event, "conversation_id": "cv1", "workspace_roots": ["/home/you/project"], **fields}
 
 
+class ReviewRegressionTests(unittest.TestCase):
+    """What the code review of 0.20.0 found, each kept from coming back."""
+
+    def test_text_typed_into_a_running_shell_is_checked(self):
+        self.assertEqual(claude_decision(run("codex", codex("write_stdin", {"session_id": 1, "chars": "rm -rf ~\n"}))[1]), "deny")
+        self.assertEqual(run("devin", {"session_id": "d", "tool_name": "write_to_process", "tool_input": {"shell_id": "main", "input": "rm -rf ~"}})[0], 2)
+        self.assertEqual(run("copilot", copilot_cli("write_bash", {"sessionId": "1", "input": "rm -rf ~"}))[1]["permissionDecision"], "deny")
+        # pressing Enter is not a command
+        self.assertIsNone(run("codex", codex("write_stdin", {"session_id": 1, "chars": "\n"}))[1])
+        self.assertEqual(claude_decision(run("codex", codex("write_stdin", {"session_id": 1}))[1]), "deny")  # unreadable
+
+    def test_powershell_and_cmd_run_every_argument_after_the_flag(self):
+        for cmd in (["powershell", "-Command", "Remove-Item", "-Recurse", "-Force", "~"], ["C:\\Windows\\System32\\cmd.exe", "/c", "rmdir", "/s", "/q", "C:/Users/you"]):
+            self.assertEqual(hook._command({"command": cmd}), " ".join(cmd[2:]), cmd)
+        self.assertEqual(hook._command({"command": ["bash", "-lc", "rm -rf ~", "x"]}), "rm -rf ~")
+        self.assertEqual(claude_decision(run("codex", codex("shell", {"command": ["powershell", "-Command", "Remove-Item", "-Recurse", "-Force", "~"]}))[1]), "deny")
+
+    def test_a_delete_is_a_delete_whatever_the_path_key(self):
+        out = run("cursor", cursor("preToolUse", tool_name="Delete", tool_input={"target_file": "/home/you/.verfy/key.json"}))[1]
+        self.assertEqual(out["permission"], "deny")
+        out = run("cursor", cursor("preToolUse", tool_name="Delete", tool_input={"note": "x"}))[1]
+        self.assertEqual(out["permission"], "deny")  # no path: not allowed blind
+
+    def test_a_blocked_patch_records_nothing_as_written(self):
+        patch = "*** Begin Patch\n*** Add File: notes.md\n+hi\n*** Update File: /home/you/.claude/settings.json\n+{}\n*** End Patch"
+        _, out, _, recs = run("codex", codex("apply_patch", {"command": patch}))
+        self.assertEqual(claude_decision(out), "deny")
+        self.assertEqual({r["outcome"]["status"] for r in recs}, {"blocked"})
+
+    def test_in_the_sandbox_an_agent_cannot_rewrite_its_own_verfy_hook(self):
+        from verfy import sandbox
+        self.assertIn("~/.codex/hooks.json", sandbox.runtime_settings({}, agent="codex")["filesystem"]["denyWrite"])
+        self.assertIn("~/.gemini/settings.json", sandbox.runtime_settings({}, agent="gemini")["filesystem"]["denyWrite"])
+        self.assertIn("~/.copilot/hooks", sandbox.runtime_settings({}, agent="copilot")["filesystem"]["denyWrite"])
+
+    def test_setup_does_not_say_all_is_well_when_a_file_is_broken(self):
+        from contextlib import redirect_stdout
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / ".gemini").mkdir()
+        (tmp / ".gemini" / "settings.json").write_text("{broken", "utf-8")
+        out = io.StringIO()
+        with mock.patch.object(Path, "home", return_value=tmp), mock.patch("shutil.which", return_value=None), redirect_stdout(out), redirect_stderr(io.StringIO()):
+            code = cli.main(["setup", "--agent", "gemini"])
+        self.assertEqual(code, 1)
+        self.assertIn("could not be read", out.getvalue())
+        self.assertNotIn("already set up", out.getvalue())
+
+    def test_an_older_machine_wide_hook_is_reported_not_trusted(self):
+        from verfy import agents
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        files = {"claude-code": {k: str(tmp / "claude.json") for k in ("win32", "darwin", "linux")},
+                 "cursor": {k: str(tmp / "cursor-hooks.json") for k in ("win32", "darwin", "linux")}}
+        old = {"version": 1, "hooks": {e: [{"command": "verfy hook cursor", "failClosed": True}] for e in ("beforeShellExecution", "beforeMCPExecution", "beforeReadFile")}}
+        (tmp / "cursor-hooks.json").write_text(json.dumps(old), "utf-8")
+        with mock.patch.dict(agents.SYSTEM_FILES, files), mock.patch("shutil.which", return_value=None):
+            items = agents.plan([agents.BY_KEY["cursor"]], tmp, tmp, False, "verfy")
+            self.assertEqual((items[0]["kind"], items[0]["state"]), ("system", "error"))
+            self.assertIn("older Verfy", items[0]["error"])
+            current, _ = hook.with_cursor_hook(old)
+            (tmp / "cursor-hooks.json").write_text(json.dumps(current), "utf-8")
+            self.assertEqual(agents.plan([agents.BY_KEY["cursor"]], tmp, tmp, False, "verfy")[0]["state"], "on")
+
+    def test_a_devin_call_through_claude_settings_is_recorded_as_devin(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        with mock.patch.object(Path, "home", return_value=tmp):
+            recs = run("pre-tool-use", {"session_id": "d1", "tool_name": "exec", "tool_input": {"command": "rm -rf ~"}})[3]
+        self.assertEqual(recs[0].get("agent"), "devin")
+
+
 class CursorToolHookTests(unittest.TestCase):
     """Cursor's preToolUse: file writes, deletes and every tool the other Cursor hooks do not see."""
 
@@ -344,6 +426,13 @@ class CursorOutputTests(unittest.TestCase):
         cleaned = json.loads(out["updated_mcp_tool_output"])
         self.assertNotIn(TOKEN, json.dumps(cleaned))
         self.assertIn("[REDACTED:", cleaned["content"][0]["text"])
+
+    def test_a_result_that_only_looks_like_json_is_cleaned_as_text(self):
+        out = run("cursor", cursor("postToolUse", tool_name="MCP:x", tool_output="{not json " + TOKEN))[1]
+        self.assertNotIn(TOKEN, out["updated_mcp_tool_output"])
+
+    def test_the_tool_hook_has_no_matcher_a_regex_engine_could_reject(self):
+        self.assertNotIn("matcher", hook.with_cursor_hook({})[0]["hooks"]["preToolUse"][0])
 
     def test_a_clean_result_is_left_alone(self):
         self.assertEqual(run("cursor", cursor("postToolUse", tool_name="MCP:list", tool_output="all good"))[1], {})

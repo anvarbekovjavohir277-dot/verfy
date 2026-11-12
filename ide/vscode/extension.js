@@ -18,7 +18,8 @@ let status;
 let cli; // [command, ...args before the verfy arguments], once found
 
 function candidates() {
-  const own = vscode.workspace.getConfiguration("verfy").get("path");
+  // the user's own setting only: a folder's .vscode/settings.json must not choose the program this runs
+  const own = vscode.workspace.getConfiguration("verfy").inspect("path")?.globalValue;
   const home = os.homedir();
   const list = [];
   if (own) list.push([own]);
@@ -90,7 +91,8 @@ async function previewThenWrite(args, what) {
   if (!preview) return;
   out.show(true);
   if (!/Nothing changed yet/.test(preview.stdout)) {
-    vscode.window.showInformationMessage(/already/.test(preview.stdout) ? `Verfy: ${what} is already done.` : "Verfy: see the Verfy output for what was found.");
+    if (preview.code !== 0) vscode.window.showWarningMessage("Verfy: a file could not be read or written; the Verfy output says which.");
+    else vscode.window.showInformationMessage(/already/.test(preview.stdout) ? `Verfy: ${what} is already done.` : "Verfy: see the Verfy output for what was found.");
     return;
   }
   const ok = await vscode.window.showInformationMessage(
@@ -115,6 +117,12 @@ async function refresh() {
     return;
   }
   const r = await run(cli, ["setup"], 30000);
+  if (r.code !== 0) {
+    status.text = "$(warning) Verfy: check";
+    status.tooltip = "verfy setup could not read or write a file. Click to see why.";
+    status.command = "verfy.setup";
+    return true;
+  }
   const todo = /Nothing changed yet/.test(r.stdout);
   status.text = todo ? "$(shield) Verfy: set up" : "$(shield) Verfy";
   status.tooltip = todo ? "Some agents here are not guarded yet. Click to set them up." : "Verfy guards the agents found here. Click for more.";
