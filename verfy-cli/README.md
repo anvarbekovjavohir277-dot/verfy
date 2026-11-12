@@ -8,6 +8,24 @@ curl -fsSLO https://verfy.dev/install.sh && less install.sh && sh install.sh   #
 pip install "verfy[fast]"          # optional: faster Ed25519 via `cryptography`
 ```
 
+![verfy posture, verfy setup and verfy doctor on a computer with Claude Code, Cursor, Codex CLI and Gemini CLI](https://raw.githubusercontent.com/anvarbekovjavohir277-dot/verfy/main/docs/assets/verfy-setup.gif)
+
+Real output of Verfy 0.20.0 on a demo home folder.
+
+## Try it in a minute
+
+```bash
+verfy posture            # risky settings in the coding agents on this computer; reads only, changes nothing
+verfy demo               # watch the gateway stop a poisoned tool and risky calls; installs nothing
+```
+
+Then fail a pull request when an MCP tool changes: copy [examples/ci/verfy.yml](https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/verfy-cli/examples/ci/verfy.yml) to `.github/workflows/verfy.yml`. It runs the [Verfy GitHub Action](https://github.com/anvarbekovjavohir277-dot/verfy-action):
+
+```yaml
+- uses: actions/checkout@v7
+- uses: anvarbekovjavohir277-dot/verfy-action@v1
+```
+
 ## Set up every agent at once
 
 ```bash

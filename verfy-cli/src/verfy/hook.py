@@ -774,7 +774,7 @@ def _under(home_part: tuple[str, ...], project_part: tuple[str, ...]) -> Callabl
 INSTALL: dict[str, tuple[str, Callable[..., Path], Callable[[dict], tuple[dict, bool]], tuple[str, ...]]] = {
     "claude-code": ("Claude Code", settings_path, with_claude_hooks, (".claude",)),
     "cursor": ("Cursor", cursor_hooks_path, with_cursor_hook, (".cursor",)),
-    "codex": ("Codex", _under((".codex", "hooks.json"), (".codex", "hooks.json")), with_codex_hook, (".codex",)),
+    "codex": ("Codex CLI", _under((".codex", "hooks.json"), (".codex", "hooks.json")), with_codex_hook, (".codex",)),
     "gemini": ("Gemini CLI", _under((".gemini", "settings.json"), (".gemini", "settings.json")), with_gemini_hook, (".gemini",)),
     "copilot": ("Copilot", _under((".copilot", "hooks", "verfy.json"), (".github", "hooks", "verfy.json")), with_copilot_hook, (".copilot",)),
     "windsurf": ("Windsurf", _under((".codeium", "windsurf", "hooks.json"), (".windsurf", "hooks.json")), with_windsurf_hook, (".codeium", "windsurf")),

@@ -124,14 +124,32 @@ def cursor(path: Path) -> list[dict]:
     return out
 
 
-def check(home: Path, cwd: Path) -> list[dict]:
-    """Every finding for the agents' user settings and this folder's settings."""
-    places = [
+def _places(home: Path, cwd: Path) -> list:
+    return [
         (claude, home / ".claude" / "settings.json"), (claude, cwd / ".claude" / "settings.json"), (claude, cwd / ".claude" / "settings.local.json"),
         (codex, home / ".codex" / "config.toml"), (codex, cwd / ".codex" / "config.toml"),
         (gemini, home / ".gemini" / "settings.json"), (gemini, cwd / ".gemini" / "settings.json"),
         (cursor, home / ".cursor" / "hooks.json"), (cursor, cwd / ".cursor" / "hooks.json"),
     ]
+
+
+def files(home: Path, cwd: Path) -> list[Path]:
+    """The config files posture reads on this machine, each once."""
+    out, seen = [], set()
+    for _fn, path in _places(home, cwd):
+        try:
+            key = path.resolve()
+        except OSError:
+            continue
+        if key not in seen and path.is_file():
+            seen.add(key)
+            out.append(path)
+    return out
+
+
+def check(home: Path, cwd: Path) -> list[dict]:
+    """Every finding for the agents' user settings and this folder's settings."""
+    places = _places(home, cwd)
     seen: set[Path] = set()
     out: list[dict] = []
     for fn, path in places:

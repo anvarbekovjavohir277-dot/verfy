@@ -1,0 +1,24 @@
+# Fail a pull request when an MCP tool your agents use changed since you locked it.
+# Copy this file to .github/workflows/verfy.yml in your repository.
+#
+# First, on your machine, lock today's tools and commit the lock:
+#   pip install verfy
+#   verfy lock check --update        # shows each tool definition, then writes verfy.lock
+#   git add verfy.lock .mcp.json && git commit -m "Lock MCP tools"
+#
+# Docs: https://verfy.dev/docs#ci
+name: Verfy MCP Lock
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: anvarbekovjavohir277-dot/verfy-action@v1
+        # with:
+        #   config: .mcp.json          # the MCP config whose servers are checked
+        #   require-pinned: "true"     # also fail a server started as pkg@latest
+        # env:
+        #   MCP_TOKEN: ${{ secrets.MCP_TOKEN }}   # for a remote server whose config says "Bearer ${MCP_TOKEN}"
