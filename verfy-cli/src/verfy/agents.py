@@ -15,7 +15,7 @@ import json
 import shutil
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Callable
 
 from . import hook as hooks
@@ -286,8 +286,9 @@ def system_plan(platform: str, exe: str | None, root: Path | None = None) -> lis
     out = []
 
     def place(agent: str) -> Path:
-        p = Path(SYSTEM_FILES[agent][plat])
-        return root / p.relative_to(p.anchor) if root else p
+        # read the path by the rules of the system it belongs to, so a Windows path is split right on Linux too (tests)
+        pure = (PureWindowsPath if plat == "win32" else PurePosixPath)(SYSTEM_FILES[agent][plat])
+        return root.joinpath(*pure.parts[1:]) if root else Path(pure)
 
     path = place("claude-code")
     item = {"agent": BY_KEY["claude-code"], "kind": "system", "path": path}
