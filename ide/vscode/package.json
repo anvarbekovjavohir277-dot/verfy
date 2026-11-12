@@ -2,7 +2,7 @@
   "name": "verfy",
   "displayName": "Verfy",
   "description": "Guard the AI agents in your editor: Verfy checks each tool call, locks MCP tools, signs a receipt for every call it checks, and can open the terminal inside a sandbox.",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "publisher": "verfy",
   "license": "MIT",
   "icon": "icon.png",
@@ -57,6 +57,16 @@
       {
         "command": "verfy.posture",
         "title": "Show risky agent settings",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.postureFix",
+        "title": "Fix risky agent settings",
+        "category": "Verfy"
+      },
+      {
+        "command": "verfy.undo",
+        "title": "Take Verfy out of every agent (undo setup)",
         "category": "Verfy"
       },
       {

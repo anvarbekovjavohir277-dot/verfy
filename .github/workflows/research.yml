@@ -1,14 +1,17 @@
 name: Research - MCP tool changes
 
 # Starts third-party MCP servers (research/servers.json), several releases of each, and records
-# their tool definitions. Runs only by hand. The job has no token permissions and no secrets:
-# the packages run on a throwaway runner and never see a credential (the servers get placeholders).
+# their tool definitions. Runs every Monday and by hand. The job has no token permissions and no
+# secrets: the packages run on a throwaway runner and never see a credential (the servers get
+# placeholders). The results are artifacts; verfy.dev/servers is built from them.
 on:
   workflow_dispatch:
     inputs:
       versions:
         description: "Releases per server"
         default: "6"
+  schedule:
+    - cron: "17 5 * * 1"
 
 permissions: {}
 
@@ -50,7 +53,7 @@ jobs:
       - name: Collect
         env:
           ID: ${{ matrix.id }}
-          VERSIONS: ${{ inputs.versions }}
+          VERSIONS: ${{ inputs.versions || '6' }}
           PUPPETEER_SKIP_DOWNLOAD: "1"
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: python research/tool_history.py "$ID" --versions "$VERSIONS" --out "results/$ID.json"
@@ -58,4 +61,4 @@ jobs:
         with:
           name: result-${{ matrix.id }}
           path: results/
-          retention-days: 30
+          retention-days: 90

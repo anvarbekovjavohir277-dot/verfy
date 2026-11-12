@@ -1432,6 +1432,202 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     });
   }
 
+  /* ============================================================ config check (discover.py: check_server) */
+  var RUNNERS = { npx: "npm", bunx: "npm", uvx: "pypi", pipx: "pypi" };
+  var LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1", "[::1]"];
+
+  function cfgF(rule, severity, message, where) { return { rule: rule, severity: severity, message: message, where: where }; }
+  function stripEnd(v, suffix) { return v.length >= suffix.length && v.slice(-suffix.length) === suffix ? v.slice(0, -suffix.length) : v; }
+  // the program a command names: its last path part, lower case, without .exe or .cmd
+  function programName(command) {
+    var parts = String(command).split(/[\\/]/);
+    return stripEnd(stripEnd(parts[parts.length - 1].toLowerCase(), ".exe"), ".cmd");
+  }
+  function pyStr(a) { return a === true ? "True" : a === false ? "False" : String(a); }
+  function argList(v) {
+    return (Array.isArray(v) ? v : []).filter(function (a) { return typeof a === "string" || typeof a === "number" || typeof a === "boolean"; }).map(pyStr);
+  }
+  // Python's shlex.split: quotes and backslashes as a POSIX shell reads them; null when a quote is left open
+  function shlexSplit(text) {
+    var out = [], cur = "", has = false, i = 0, n = text.length, ch, q = null;
+    while (i < n) {
+      ch = text.charAt(i);
+      if (q === "'") {
+        if (ch === "'") q = null; else cur += ch;
+      } else if (q === '"') {
+        if (ch === '"') q = null;
+        else if (ch === "\\" && i + 1 < n && (text.charAt(i + 1) === '"' || text.charAt(i + 1) === "\\")) { cur += text.charAt(i + 1); i++; }
+        else cur += ch;
+      } else if (ch === "'" || ch === '"') { q = ch; has = true; }
+      else if (ch === "\\") { if (i + 1 >= n) return null; cur += text.charAt(i + 1); i++; has = true; }
+      else if (/\s/.test(ch)) { if (has || cur) { out.push(cur); cur = ""; has = false; } }
+      else cur += ch;
+      i++;
+    }
+    if (q) return null;
+    if (has || cur) out.push(cur);
+    return out;
+  }
+  function unwrapShell(command, args) {
+    var parts = String(command).split(/[\\/]/), base = stripEnd(parts[parts.length - 1].toLowerCase(), ".exe");
+    if (base === "cmd" && args.length > 1 && has(["/c", "/k", "/s/c"], args[0].toLowerCase())) return [args[1], args.slice(2)];
+    if (has(["sh", "bash", "zsh", "dash"], base) && args[0] === "-c" && args.length > 1) {
+      var inner = shlexSplit(args[1]);
+      if (inner && inner.length && !inner.some(function (t) { return has(["|", "&&", "||", ";"], t); })) return [inner[0], inner.slice(1)];
+    }
+    return [command, args];
+  }
+  function packageArg(args) {
+    var skip = ["--package", "-p", "--from", "--with", "--python"];
+    for (var i = 0; i < args.length; i++) {
+      if (has(skip, args[i])) return i + 1 < args.length ? args[i + 1] : null;
+      if (args[i].charAt(0) === "-") continue;
+      return args[i];
+    }
+    return null;
+  }
+  function pinned(spec, ecosystem) {
+    if (ecosystem === "npm") {
+      var name = spec.charAt(0) === "@" ? spec.slice(1) : spec;
+      return name.indexOf("@") >= 0 && !/@latest$/.test(name);
+    }
+    return /(==|@)\d/.test(spec);
+  }
+  function serverUrl(spec) {
+    var keys = ["url", "serverUrl", "httpUrl"];
+    for (var i = 0; i < keys.length; i++) if (typeof spec[keys[i]] === "string" && spec[keys[i]]) return spec[keys[i]];
+    return null;
+  }
+  // `verfy proxy --url URL` read as the remote entry it stands for
+  function behindGateway(spec) {
+    var args = (Array.isArray(spec.args) ? spec.args : []).map(String);
+    var parts = String(spec.command || "").split(/[\\/]/);
+    if (stripEnd(parts[parts.length - 1].toLowerCase(), ".exe") !== "verfy" || args.slice(0, -1).indexOf("--url") < 0) return null;
+    var remote = { url: args[args.indexOf("--url") + 1] };
+    if (args.slice(0, -1).indexOf("--bearer-env") >= 0) remote.bearer_token_env_var = args[args.indexOf("--bearer-env") + 1];
+    return remote;
+  }
+  // Python's urlparse, as far as the scheme and the host go
+  function urlHost(url) {
+    var m = /^([A-Za-z][A-Za-z0-9+.-]*):(.*)$/.exec(url);
+    if (!m) return { scheme: "", host: "" };
+    var host = "";
+    if (m[2].slice(0, 2) === "//") {
+      var net = /^[^\/?#]*/.exec(m[2].slice(2))[0];
+      net = net.slice(net.lastIndexOf("@") + 1);
+      if (net.charAt(0) === "[") host = net.indexOf("]") > 0 ? net.slice(1, net.indexOf("]")) : "";
+      else host = net.split(":")[0];
+    }
+    return { scheme: m[1].toLowerCase(), host: host.toLowerCase() };
+  }
+  function truthy(v) { return !!v && !(Array.isArray(v) && !v.length) && !(isObj(v) && !Object.keys(v).length); }
+  function gatewayed(base, args) { return base === "verfy" || (args[0] === "-m" && args[1] === "verfy"); }
+
+  /** How one MCP server is launched, checked without starting it. `local` names the npm packages the project's own
+   *  package.json lists (a lockfile pins those). */
+  function checkServer(name, spec, local) {
+    var out = [];
+    var command = String(spec.command || ""), args = argList(spec.args);
+    var launchCommand = command, launchArgs = args;
+    var un = unwrapShell(command, args);
+    command = un[0]; args = un[1];
+    var base = programName(command);
+    var gated = gatewayed(base, args);
+    while (gatewayed(base, args) && args.indexOf("--") >= 0) {  // a gateway, a sandbox, or both
+      var inner = args.slice(args.indexOf("--") + 1);
+      command = inner.length ? inner[0] : ""; args = inner.slice(1);
+      base = programName(command);
+    }
+    var runnerArgs = args;
+    if ((base === "pnpm" || base === "yarn") && args[0] === "dlx") { base = "npx"; runnerArgs = args.slice(1); }
+    if (base === "uv" && args[0] === "tool" && args[1] === "run") { base = "uvx"; runnerArgs = args.slice(2); }
+    if (Object.prototype.hasOwnProperty.call(RUNNERS, base)) {
+      var pkg = packageArg(runnerArgs), eco = RUNNERS[base];
+      if (pkg && !/^[.\/~]/.test(pkg) && !pinned(pkg, eco) && !(eco === "npm" && has(local || [], pkg))) {
+        var msg;
+        if (/@latest$/.test(pkg)) msg = "`" + base + " " + pkg + "` downloads the newest version every time it starts; pin a version.";
+        else if (eco === "npm") msg = "`" + base + " " + pkg + "` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.";
+        else msg = "`" + base + " " + pkg + "` downloads whatever version is newest at launch; pin a version.";
+        out.push(cfgF("VFY-CFG-001", "medium", msg, "args"));
+      }
+    }
+    var joined = [launchCommand].concat(launchArgs).join(" ");
+    if (/\b(?:curl|wget|iwr|Invoke-WebRequest)\b[^|]*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b/.test(joined) || /\b(?:iex|Invoke-Expression)\b/i.test(joined)) {
+      out.push(cfgF("VFY-CFG-004", "critical", "Launch command downloads a script and runs it in a shell.", "command"));
+    }
+    if (base === "docker" || base === "podman") {
+      if (args.some(function (a, i) { return a === "--privileged" || a.indexOf("--network=host") === 0 || (a === "host" && i > 0 && (args[i - 1] === "--network" || args[i - 1] === "--net")); })) {
+        out.push(cfgF("VFY-CFG-005", "high", "Container runs privileged or on the host network.", "args"));
+      }
+      args.forEach(function (a, i) {
+        if (has(["-v", "--volume", "--mount"], a) && i + 1 < args.length) {
+          var src = args[i + 1].split(":")[0];
+          if (has(["/", "~", "$HOME", "${HOME}", "C"], src) || has(["/home", "/Users", "/root"], src.replace(/[\/\\]+$/, ""))) {
+            out.push(cfgF("VFY-CFG-005", "high", "Container mounts `" + src + "`, giving it the whole disk or home folder.", "args"));
+          }
+        }
+      });
+    }
+    var remote = behindGateway(spec) || spec;
+    var url = serverUrl(remote);
+    if (url) {
+      var u = urlHost(url);
+      if (u.scheme === "http" && !has(LOCAL_HOSTS, u.host)) {
+        out.push(cfgF("VFY-CFG-002", "high", "Talks to " + (u.host || "None") + " over plain http, so anyone on the network can read or change tool calls.", "url"));
+      }
+      var headers = isObj(spec.headers) ? spec.headers : {};
+      if (!has(LOCAL_HOSTS, u.host) && !Object.keys(headers).some(function (k) { return k.toLowerCase() === "authorization"; }) && !truthy(spec.oauth) && !truthy(spec.auth) && !truthy(remote.bearer_token_env_var)) {
+        out.push(cfgF("VFY-CFG-007", "info", "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.", "headers"));
+      }
+    }
+    var texts = launchArgs.map(function (a) { return ["args", a]; });
+    ["env", "headers"].forEach(function (key) {
+      if (!isObj(spec[key])) return;
+      Object.keys(spec[key]).forEach(function (k) {
+        var v = spec[key][k];
+        if (typeof v === "string" && v.slice(0, 2) === "${" && v.slice(-1) === "}") return;
+        texts.push([key + "." + k, v !== null && typeof v === "object" ? JSON.stringify(v) : pyStr(v)]);
+      });
+    });
+    if (typeof url === "string") texts.push(["url", url]);
+    texts.forEach(function (t) {
+      var hits = scanSecrets(t[1]);
+      if (hits.length) out.push(cfgF("VFY-CFG-003", "high", "A " + hits[0].label + " is written into the config (" + t[0] + "); load it from the environment instead.", t[0]));
+    });
+    if (!gated && (command || url)) {
+      out.push(cfgF("VFY-CFG-006", "low", "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).", "command"));
+    }
+    var seen = {}, uniq = [];
+    out.forEach(function (f) {
+      var k = f.rule + "\u0000" + f.where + "\u0000" + f.message;
+      if (!seen[k]) { seen[k] = true; uniq.push(f); }
+    });
+    return uniq.map(function (f, i) { return [f, i]; })
+      .sort(function (a, b) { return (SEVERITY_RANK[b[0].severity] - SEVERITY_RANK[a[0].severity]) || (a[1] - b[1]); })
+      .map(function (x) { return x[0]; });
+  }
+
+  /** The MCP servers a config object lists: `mcpServers` (most clients), `servers` (VS Code) or `mcp_servers` (Codex). */
+  function configServers(data) {
+    var out = {};
+    if (!isObj(data)) return out;
+    ["mcpServers", "servers", "mcp_servers"].forEach(function (key) {
+      if (isObj(data[key])) Object.keys(data[key]).forEach(function (k) { if (isObj(data[key][k])) out[k] = data[key][k]; });
+    });
+    return out;
+  }
+
+  /** The static check of a whole config, shaped like `verfy scan`'s config report. */
+  function checkConfig(data, local) {
+    var servers = configServers(data), summary = { critical: 0, high: 0, medium: 0, low: 0 };
+    var rows = Object.keys(servers).sort().map(function (name) {
+      var findings = checkServer(name, servers[name], local);
+      findings.forEach(function (f) { summary[f.severity] = (summary[f.severity] || 0) + 1; });
+      return { server: name, transport: serverUrl(behindGateway(servers[name]) || servers[name]) ? "http" : "stdio", findings: findings };
+    });
+    return { v: "verfy.config-scan/1", mode: "static", servers: rows, summary: summary };
+  }
+
   return {
     version: "0.2.0",
     PATTERNS: PATTERNS, DEFAULT_POLICY: DEFAULT_POLICY,
@@ -1439,6 +1635,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     loadPolicy: loadPolicy, check: check, classify: classify, parseShell: parseShell,
     scan: scan, toolPin: toolPin, unsafeTools: unsafeTools, grade: grade,
     scanSecrets: scanSecrets, redactValue: redactValue, paymentAmount: paymentAmount,
+    checkServer: checkServer, configServers: configServers, checkConfig: checkConfig,
     ed25519: ed25519, b64u: b64u, unb64u: unb64u, keyId: keyId, generateKey: generateKey, keyFromSecret: keyFromSecret,
     signReceipt: signReceipt, verifyReceipt: verifyReceipt, buildReceipt: buildReceipt, verifyLedger: verifyLedger, parseLedger: parseLedger
   };

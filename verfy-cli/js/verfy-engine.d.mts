@@ -52,6 +52,13 @@ export interface ScanReport {
   removed_tools: string[];
 }
 
+export interface ConfigReport {
+  v: string;
+  mode: "static";
+  servers: { server: string; transport: "http" | "stdio"; findings: ScanFinding[] }[];
+  summary: Record<string, number>;
+}
+
 export type Policy = Record<string, unknown>;
 
 export interface Engine {
@@ -67,6 +74,10 @@ export interface Engine {
   toolPin(tool: Record<string, unknown>): Promise<string>;
   scanSecrets(text: string): { id: string; label: string; severity: Severity; start: number; end: number }[];
   redactValue<T>(value: T): T;
+  /** How one MCP server is launched, checked without starting it (the CLI's `verfy scan` config rules, VFY-CFG-001..007). */
+  checkServer(name: string, spec: Record<string, unknown>, local?: string[] | null): ScanFinding[];
+  configServers(data: unknown): Record<string, Record<string, unknown>>;
+  checkConfig(data: unknown, local?: string[] | null): ConfigReport;
 }
 
 export function createEngine(patterns: unknown, defaultPolicy: unknown): Engine;

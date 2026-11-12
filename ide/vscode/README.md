@@ -6,6 +6,8 @@ The checks are done by the [Verfy CLI](https://verfy.dev/install) (free, MIT). T
 
 - **Set up every agent on this computer.** It finds Claude Code, Cursor, Codex CLI, Gemini CLI, GitHub Copilot, Windsurf and Claude Desktop. It adds Verfy's hook to each and puts their MCP servers behind the Verfy gateway. You see the list of changes first, and a backup of every changed file is kept.
 - **Open the terminal inside the sandbox (beta).** The editor's AI agent runs its commands in the editor's terminal. With this on, that terminal starts inside `verfy run --sandbox`, so a command can write only in the project and reach only the hosts your policy allows. On Windows this needs WSL2 with `verfy` and `srt` inside it.
+- **Fix risky agent settings** (`verfy posture --fix`): bypass modes and hooks switched off, each fixed with the smallest edit after you see it.
+- **Take Verfy out again** (`verfy setup --undo`): its hooks, the gateway and the sandboxed terminal, everything else kept.
 - **Check this computer** (`verfy doctor`) and **show the latest receipts** (`verfy ledger show`).
 
 The status bar shows whether the agents found here are guarded. If the CLI is missing, the extension offers to install it in a terminal you can see.
@@ -18,6 +20,8 @@ The extension changes no file itself and makes no network call. Every change goe
 - `Verfy: Open the terminal inside the sandbox` / `Stop opening the terminal inside the sandbox`
 - `Verfy: Check this computer (doctor)`
 - `Verfy: Show risky agent settings` (`verfy posture`: bypass modes, hooks switched off, a sandbox turned off)
+- `Verfy: Fix risky agent settings` (`verfy posture --fix`)
+- `Verfy: Take Verfy out of every agent (undo setup)` (`verfy setup --undo`)
 - `Verfy: Show the latest receipts`
 - `Verfy: Install the Verfy CLI`
 

@@ -12,6 +12,7 @@ only, never from environment variables, so a test with another home folder canno
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from dataclasses import dataclass
@@ -130,22 +131,48 @@ def _home_path(where: Callable[..., Path], home: Path) -> Path:
         return real
 
 
+def same_newlines(text: str, like: str | None) -> str:
+    """`text` with the line endings of `like`, the file it replaces: a Windows file keeps its CRLF, a Unix one its LF."""
+    if like is not None and "\r\n" in like and "\r\n" not in text:
+        return text.replace("\n", "\r\n")
+    return text
+
+
+def _prune_empty(folder: Path, stop: set[Path]) -> None:
+    """Remove `folder` and its parents while they are empty, up to (not including) a folder in `stop`."""
+    while folder not in stop and folder.parent != folder:
+        try:
+            folder.rmdir()  # only an empty folder can be removed
+        except OSError:
+            return
+        folder = folder.parent
+
+
 def apply(items: list[dict]) -> list[dict]:
-    """Write every change in the plan, keeping a backup. One file that fails does not stop the others."""
+    """Write every change in the plan, keeping a backup. One file that fails does not stop the others. A file is written
+    exactly as planned, with the line endings it had."""
     backed_up: set[Path] = set()
     for item in items:
-        if item["state"] not in ("add", "wrap"):
+        if item["state"] not in ("add", "wrap", "remove", "unwrap"):
             continue
         path: Path = item["path"]
         try:
-            if path.exists() and path not in backed_up:  # the backup is the file as it was before setup
+            before = path.read_bytes().decode("utf-8", "replace") if path.exists() else None
+            if path.exists() and path not in backed_up:  # the backup is the file as it was before this run
                 backed_up.add(path)
                 shutil.copyfile(path, path.with_suffix(path.suffix + ".verfy-backup"))
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(item["text"], "utf-8")
+            if item.get("delete"):
+                path.unlink()
+                if item.get("prune"):
+                    _prune_empty(path.parent, item["prune"])
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                text = item["text"] if item.get("exact") else same_newlines(item["text"], before)
+                path.write_text(text, "utf-8", newline="")
             item["done"] = True
         except OSError as e:
-            item.update(state="error", error=f"cannot write it: {e}")
+            admin = item["kind"] == "system" and isinstance(e, PermissionError)
+            item.update(state="error", error=ADMIN_NOTE if admin else f"cannot write it: {e}")
     return items
 
 
@@ -280,15 +307,21 @@ def claude_system_settings(verfy: str) -> dict:
     }}
 
 
+def system_path(agent: str, platform: str, root: Path | None = None) -> Path:
+    """Where the machine-wide file of an agent is. `root` moves it under a test folder."""
+    plat = _platform(platform)
+    # read the path by the rules of the system it belongs to, so a Windows path is split right on Linux too (tests)
+    pure = (PureWindowsPath if plat == "win32" else PurePosixPath)(SYSTEM_FILES[agent][plat])
+    return root.joinpath(*pure.parts[1:]) if root else Path(pure)
+
+
 def system_plan(platform: str, exe: str | None, root: Path | None = None) -> list[dict]:
     """The machine-wide hook files for Claude Code and Cursor. `root` moves them under a test folder."""
-    plat, verfy = _platform(platform), system_command(exe)
+    verfy = system_command(exe)
     out = []
 
     def place(agent: str) -> Path:
-        # read the path by the rules of the system it belongs to, so a Windows path is split right on Linux too (tests)
-        pure = (PureWindowsPath if plat == "win32" else PurePosixPath)(SYSTEM_FILES[agent][plat])
-        return root.joinpath(*pure.parts[1:]) if root else Path(pure)
+        return system_path(agent, platform, root)
 
     path = place("claude-code")
     item = {"agent": BY_KEY["claude-code"], "kind": "system", "path": path}
@@ -314,9 +347,15 @@ def system_plan(platform: str, exe: str | None, root: Path | None = None) -> lis
     return out
 
 
-def without_user_hooks(config: dict) -> tuple[dict, bool]:
+def is_verfy_hook(command: object) -> bool:
+    """True for a hook command that runs Verfy: `verfy hook ...`, also with a full path or `.exe`."""
+    return isinstance(command, str) and re.search(r"""(?:^|[\\/\s"'])verfy(?:\.exe)?["']?\s+hook(?:\s|$)""", command) is not None
+
+
+def without_user_hooks(config: dict, prune: bool = False) -> tuple[dict, bool]:
     """A settings or hooks file with Verfy's own hook entries taken out, everything else kept. Used once the same hooks
-    are machine-wide, so each call is not checked and recorded twice."""
+    are machine-wide, so each call is not checked and recorded twice, and by `verfy setup --undo`. With `prune`, an
+    event that held only Verfy's hook is removed too, and then `hooks` itself when nothing is left in it."""
     out = json.loads(json.dumps(config))
     hooks_ = out.get("hooks")
     if not isinstance(hooks_, dict):
@@ -327,18 +366,23 @@ def without_user_hooks(config: dict) -> tuple[dict, bool]:
             continue
         kept = []
         for e in entries:
-            if isinstance(e, dict) and isinstance(e.get("command"), str) and "verfy hook" in e["command"]:
-                changed = True  # Cursor: {"command": ...}
+            if isinstance(e, dict) and any(is_verfy_hook(e.get(k)) for k in ("command", "bash", "powershell")):
+                changed = True  # Cursor, Windsurf, Copilot: {"command": ...}
                 continue
             if isinstance(e, dict) and isinstance(e.get("hooks"), list):
-                inner = [h for h in e["hooks"] if not (isinstance(h, dict) and "verfy hook" in str(h.get("command", "")))]
+                inner = [h for h in e["hooks"] if not (isinstance(h, dict) and is_verfy_hook(h.get("command")))]
                 if len(inner) != len(e["hooks"]):
                     changed = True
                     if not inner:
-                        continue  # Claude Code: a group with only Verfy's hook
+                        continue  # Claude Code, Codex, Gemini, Devin: a group with only Verfy's hook
                     e = {**e, "hooks": inner}
             kept.append(e)
-        hooks_[event] = kept
+        if prune and not kept and len(kept) != len(entries):
+            del hooks_[event]
+        else:
+            hooks_[event] = kept
+    if prune and changed and not hooks_:
+        del out["hooks"]
     return out, changed
 
 
@@ -381,3 +425,110 @@ def apply_system(items: list[dict], cleanup: list[dict]) -> list[dict]:
         if c["state"] == "add":
             c.update(state="skipped", error="kept, because a machine-wide file was not written")
     return items + cleanup
+
+
+# ---------------------------------------------------------------- verfy setup --undo
+
+# A file that held nothing but Verfy's hook is removed, not left behind empty: `{}`, or a hooks file with only its
+# version number.
+HOOK_FILES = ("hooks.json", "verfy.json", "50-verfy.json")
+
+
+def _backup_text(path: Path) -> str | None:
+    backup = path.with_suffix(path.suffix + ".verfy-backup")
+    try:
+        return backup.read_bytes().decode("utf-8") if backup.is_file() else None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _as_before(item: dict, path: Path, same) -> None:
+    """When the change leaves the file saying just what its backup says, write the backup's own text instead, so the
+    file comes back as it was, spacing and line endings included. `same(backup_text)` compares the content."""
+    backup = _backup_text(path)
+    if backup is None or item.get("delete"):
+        return
+    try:
+        if same(backup.removeprefix("\ufeff")):
+            item.update(text=backup, exact=True)
+    except ValueError:
+        pass
+
+
+def _unhook(item: dict, path: Path, text: str, stop: set[Path]) -> str | None:
+    """Fill in an undo item for one hooks file. Returns the new text when the file stays and changes."""
+    current = json.loads(text)
+    if not isinstance(current, dict):
+        raise ValueError("not a JSON object")
+    updated, changed = without_user_hooks(current, prune=True)
+    if not changed:
+        item.update(state="off")
+        return None
+    if updated == {} or (updated == {"version": 1} and path.name in HOOK_FILES):
+        item.update(state="remove", delete=True, prune=stop)
+        return None
+    item.update(state="remove", text=json.dumps(updated, indent=2, ensure_ascii=False) + "\n")
+    _as_before(item, path, lambda b: json.loads(b) == updated)
+    return item["text"]
+
+
+def undo_plan(agents: list[Agent], home: Path, cwd: Path, project: bool, hooks_only: bool = False) -> list[dict]:
+    """What `verfy setup --undo` would change: Verfy's hook taken out of each agent's file and each MCP server taken
+    out from behind the gateway, everything else in those files kept. Only files that exist are looked at."""
+    out = []
+    pending: dict[Path, str] = {}  # Gemini keeps its hook and its MCP servers in one file
+    stop = {home, cwd}  # an emptied hooks file's empty folders are removed, never these
+
+    def read(path: Path) -> str:
+        return pending[path] if path in pending else path.read_text("utf-8-sig")
+
+    for a in agents:
+        if a.hook:
+            _label, where, _add, _dirs = hooks.INSTALL[a.hook]
+            path = where(project, cwd) if project else _home_path(where, home)
+            if path.is_file():
+                item = {"agent": a, "kind": "hook", "path": path}
+                try:
+                    text = _unhook(item, path, read(path), stop)
+                    if text is not None:
+                        pending[path] = text
+                except (OSError, ValueError) as e:
+                    item.update(state="error", error=f"cannot read it: {e}")
+                out.append(item)
+            machine = None if project else system_hooked(a.key)
+            if machine:
+                out.append({"agent": a, "kind": "system", "path": machine, "state": "note"})
+        if hooks_only:
+            continue
+        for parts in (a.project_mcp if project else a.user_mcp):
+            path = (cwd if project else home).joinpath(*parts)
+            if not path.is_file() or any(i["path"] == path and i.get("delete") for i in out):
+                continue
+            item = {"agent": a, "kind": "mcp", "path": path}
+            try:
+                backup = _backup_text(path)
+                text, names, left = wrapcfg.unwrap_text(path, read(path), backup)
+                item.update(state="unwrap" if names else "off", text=text, unwrapped=names, left=left)
+                if names:
+                    pending[path] = text
+                    _as_before(item, path, lambda b: wrapcfg.same_config(path, b, text))
+            except (OSError, ValueError) as e:
+                item.update(state="error", error=f"cannot read it: {e}")
+            out.append(item)
+    return out
+
+
+def system_undo_plan(platform: str, root: Path | None = None) -> list[dict]:
+    """Verfy's hooks taken out of the machine-wide files of Claude Code and Cursor (needs administrator rights)."""
+    out = []
+    for key in SYSTEM_FILES:
+        path = system_path(key, platform, root)
+        if not path.is_file():
+            continue
+        item = {"agent": BY_KEY[key], "kind": "system", "path": path}
+        try:
+            _unhook(item, path, path.read_text("utf-8-sig"), set())
+        except (OSError, ValueError) as e:
+            item.update(state="error", error=f"cannot read it: {e}")
+        out.append(item)
+    return out

@@ -68,6 +68,15 @@ async function main() {
     }
   }
 
+  // how MCP servers are launched (the config rules VFY-CFG-001..007)
+  const cfg = JSON.parse(fs.readFileSync(path.join(FX, "config.json"), "utf8"));
+  const real = (v) => JSON.parse(JSON.stringify(v).split(cfg.token).join("ghp_" + "a".repeat(36)));
+  for (const c of cfg.cases) expect("config: " + c.name, K.checkServer(c.name, real(c.spec), c.local), c.expect);
+  for (const c of cfg.configs) {
+    const rep = K.checkConfig(c.data);
+    expect("config file: " + Object.keys(c.data)[0], { servers: rep.servers, summary: rep.summary }, c.expect);
+  }
+
   // Ed25519 RFC 8032 vectors
   const vec = [
     ["9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60", "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a", "", "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"],

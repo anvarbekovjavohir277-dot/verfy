@@ -137,7 +137,9 @@ async function menu() {
     { label: "Stop opening the terminal inside the sandbox", id: "verfy.sandboxOff" },
     { label: "Check this computer (doctor)", id: "verfy.doctor" },
     { label: "Show risky agent settings (posture)", id: "verfy.posture" },
+    { label: "Fix risky agent settings", id: "verfy.postureFix" },
     { label: "Show the latest receipts", id: "verfy.receipts" },
+    { label: "Take Verfy out of every agent (undo)", id: "verfy.undo" },
   ];
   const pick = await vscode.window.showQuickPick(items, { placeHolder: "Verfy" });
   if (pick) vscode.commands.executeCommand(pick.id);
@@ -159,6 +161,8 @@ async function activate(context) {
     vscode.commands.registerCommand("verfy.sandboxOff", () => previewThenWrite(["setup", "--sandbox-terminal", "off"], "Stop opening the terminal inside the sandbox")),
     vscode.commands.registerCommand("verfy.doctor", show(["doctor"])),
     vscode.commands.registerCommand("verfy.posture", show(["posture"])),
+    vscode.commands.registerCommand("verfy.postureFix", () => previewThenWrite(["posture", "--fix"], "Fix the risky agent settings found here (the old file is kept next to each)")),
+    vscode.commands.registerCommand("verfy.undo", () => previewThenWrite(["setup", "--undo"], "Take Verfy out of every agent's files: its hooks, the MCP gateway and the sandboxed terminal (your key and receipts stay)")),
     vscode.commands.registerCommand("verfy.receipts", show(["ledger", "show"])),
     vscode.commands.registerCommand("verfy.install", install),
     vscode.commands.registerCommand("verfy.menu", menu),

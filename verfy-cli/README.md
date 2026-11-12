@@ -44,11 +44,24 @@ sudo verfy setup --system --write     # macOS, Linux; on Windows, in an administ
 
 The Claude Code and Cursor hooks then live in machine-wide files (Claude Code's `managed-settings.d/`, Cursor's enterprise `hooks.json`). An agent runs as you and cannot change them, not even with a script it writes and runs, and Claude Code does not let user or project settings override them. Verfy's user-level hook is taken out so no call is checked twice.
 
+### Take it out again
+
+```bash
+verfy setup --undo           # shows what it would take out
+verfy setup --undo --write   # does it, keeping a backup of every file
+```
+
+`--undo` takes out Verfy's hook from every agent's file, takes the MCP servers out from behind the gateway and removes the sandboxed terminal. Everything else in those files stays, also what you changed after setup, and so do your key, receipts and policy. `verfy setup --write` puts it all back. A remote server is put back from the backup file setup made; without that file it stays behind the gateway and is named, so nothing is left broken. `--system --undo` (as administrator) takes out the machine-wide hooks.
+
 ### Risky agent settings
 
 ```bash
-verfy posture        # bypassPermissions, approval_policy = "never", hooks switched off, ...; exit 2 when something is high
+verfy posture                  # bypassPermissions, approval_policy = "never", hooks switched off, ...; exit 2 when something is high
+verfy posture --fix            # the smallest edit that takes each finding away; changes nothing yet
+verfy posture --fix --write    # makes the edits; the old file is kept next to each one
 ```
+
+It reads the settings of Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (VS Code and CLI) and Devin CLI. A fix sets or removes one key, or takes one entry out of a list: `bypassPermissions` becomes `default`, `disableAllHooks` is removed, `approval_policy = "never"` becomes `"on-request"`. `--min high` fixes only the high ones. A JSON file with comments is not rewritten (the comments would be lost), and Codex's `config.toml` is only written when the edited file says exactly what was meant; in both cases the finding is shown for you to change by hand.
 
 ### Secrets in prompts
 
@@ -208,7 +221,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.20.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.21.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:

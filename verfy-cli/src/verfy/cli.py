@@ -1510,6 +1510,9 @@ def _print_setup_done(items: list[dict]) -> None:
 
 
 def cmd_posture(args) -> int:
+    if args.write and not args.fix:
+        print("--write goes with --fix: `verfy posture --fix` shows the edits, `verfy posture --fix --write` makes them.", file=sys.stderr)
+        return 2
     found = posturelib.check(Path.home(), Path.cwd())
     read = posturelib.files(Path.home(), Path.cwd())
     if args.json:
@@ -1518,20 +1521,54 @@ def cmd_posture(args) -> int:
     if read:
         print(f"Read {len(read)} agent config{'s' if len(read) != 1 else ''}: {', '.join(_short(p) for p in read)}\n")
     if not found:
-        print("No risky setting found in the agents' configs (Claude Code, Codex CLI, Gemini CLI, Cursor).")
-        print("Not seen from here: Gemini's --yolo and Claude Code's --dangerously-skip-permissions, which are command-line flags,")
-        print("and Cursor's auto-run setting, which Cursor keeps in its own database.")
+        print("No risky setting found in the agents' configs (Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot, Devin).")
+        print("Not seen from here: command-line flags (Gemini's --yolo, Claude Code's --dangerously-skip-permissions, Copilot CLI's")
+        print("--allow-all), and what Cursor and Devin Desktop keep in the app itself (auto-run, the permission mode).")
         return 0
+    if args.fix:
+        return _posture_fix(args, found)
     for f in found:
         color = "31;1" if f["severity"] == "high" else ("33" if f["severity"] == "medium" else "0")
         print(f"{c(f['severity'].upper(), color):<8} {f['agent']}: {f['setting']}")
         print(f"         {f['why']}")
         print(f"         Fix: {f['fix']}  ({_short(Path(f['path']))})")
+    print("\n`verfy posture --fix` shows the edits that would take these away; nothing is changed without --write.")
     return posturelib.worst(found)
+
+
+def _posture_fix(args, found: list[dict]) -> int:
+    """Show the edits that take the findings away; make them with --write, keeping the old file next to each."""
+    wanted = [f for f in found if posturelib.RANK[f["severity"]] >= posturelib.RANK[args.min]]
+    if not wanted:
+        print(f"Nothing at severity {args.min} or above to fix ({posturelib.summary(found)}).")
+        return posturelib.worst(found)
+    items = posturelib.fix_plan(wanted)
+    if args.write:
+        posturelib.apply_fixes(items)
+    for item in items:
+        done = item.get("done")
+        print(f"{_short(item['path'])}" + ("" if item["state"] != "error" else f"  (not changed: {item['error']})"))
+        for f in item["findings"]:
+            mark = "done " if done else ("     " if item["state"] == "error" else "would")
+            print(f"  {mark} {f['change']}  ({f['severity']}: {f['agent']})")
+    left = posturelib.check(Path.home(), Path.cwd()) if args.write else found
+    if not args.write:
+        can = sum(len(i["findings"]) for i in items if i["state"] == "fix")
+        again = "verfy posture --fix" + (f" --min {args.min}" if args.min != "low" else "") + " --write"
+        print("\n" + (f"Nothing changed yet. Run `{again}` to make {'this edit' if can == 1 else f'these {can} edits'}; the old file is kept next to each one"
+                      f" (*{posturelib.BACKUP})." if can else "None of these can be changed for you; change them by hand."))
+        return posturelib.worst(found)
+    changed = [i for i in items if i.get("done")]
+    if changed:
+        print(f"\nChanged {len(changed)} file{'s' if len(changed) != 1 else ''}; the old one is kept next to each (*{posturelib.BACKUP}). Restart the agents that are open.")
+    print("Left: " + posturelib.summary(left) + ".")
+    return posturelib.worst(left)
 
 
 def cmd_setup(args) -> int:
     home, cwd = Path.home(), Path.cwd()
+    if args.undo:
+        return _setup_undo(args)
     if args.system:
         return _setup_system(args)
     if args.sandbox_terminal:
@@ -1584,6 +1621,78 @@ def _setup_system(args) -> int:
         print("              Restart Claude Code and Cursor. An agent running as you cannot change these files; one started as an")
         print("              administrator, or a person with admin rights, still can.")
     return 1 if any(i["state"] in ("error", "skipped") for i in done) else 0
+
+
+def _undo_line(item: dict, done: bool) -> list[str]:
+    """What `verfy setup --undo` does to one file, as the lines to print."""
+    kind, state = item["kind"], item["state"]
+    left = [f"left as it is: {name} ({why})" for name, why in (item.get("left") or {}).items()]
+    if state == "error":
+        notes = [f"not changed: {item['error']}"]
+    elif state == "note":
+        notes = ["the machine-wide hook stays: `verfy setup --system --undo --write` takes it out ("
+                 + ("in an administrator terminal" if os.name == "nt" else "with sudo") + ")"]
+    elif kind == "terminal":
+        notes = ["sandboxed terminal removed" if done else "stop opening the terminal inside the sandbox"]
+    elif kind == "mcp":
+        names = ", ".join(item.get("unwrapped") or [])
+        notes = ([f"taken out from behind the gateway: {names}" if done else f"take out from behind the gateway: {names}"] if names else []) + left
+    else:
+        gone = "; the file holds nothing else, so it is removed" if item.get("delete") else ""
+        notes = [("Verfy's hook taken out" if done else "take out Verfy's hook") + gone]
+    what = {"hook": "hook", "mcp": "MCP", "terminal": "term", "system": "all"}[kind]
+    path = str(item["path"]) if kind == "system" else _short(item["path"])
+    return [f"  {item['agent'].label:<15} {what:<4} {path}"] + [f"  {'':<15}      {n}" for n in notes]
+
+
+def _has_sandbox_terminal(item: dict) -> bool:
+    """An IDE settings item that would take a sandboxed terminal out; a file that cannot be read is listed only when it
+    names the profile, so a settings file with comments and no sandbox is not reported."""
+    if item["state"] == "add":
+        return True
+    if item["state"] != "error":
+        return False
+    try:
+        return agentlib.PROFILE in item["path"].read_text("utf-8-sig")
+    except OSError:
+        return True
+
+
+def _setup_undo(args) -> int:
+    """Take Verfy out of the agents' files again: its hooks, the gateway in front of MCP servers, the sandboxed
+    terminal. Everything else in those files stays, and so do the key, the receipts and the policy."""
+    if args.sandbox_terminal:
+        print("--undo already takes the sandboxed terminal out; use it without --sandbox-terminal.", file=sys.stderr)
+        return 2
+    home, cwd = Path.home(), Path.cwd()
+    scope = ("--system " if args.system else "") + ("--project " if args.project else "")
+    if args.system:
+        items = agentlib.system_undo_plan(sys.platform)
+    else:
+        agents = [agentlib.BY_KEY[k] for k in args.agent] if args.agent else list(agentlib.AGENTS)
+        items = agentlib.undo_plan(agents, home, cwd, args.project, hooks_only=args.hooks_only)
+        if not (args.project or args.hooks_only or args.agent):
+            items += [i for i in agentlib.terminal_plan(home, False, sys.platform, "verfy", None) if _has_sandbox_terminal(i)]
+    shown = [i for i in items if i["state"] != "off" or i.get("left")]
+    todo = [i for i in items if i["state"] in ("remove", "unwrap", "add")]
+    if not shown:
+        print("Verfy's hooks are not in the machine-wide files here." if args.system else
+              "Verfy is not in any agent's files here: no hook, no MCP server behind the gateway, no sandboxed terminal.")
+        return 0
+    if args.write:
+        agentlib.apply(todo)
+    for item in shown:
+        print("\n".join(_undo_line(item, bool(item.get("done")))))
+    failed = any(i["state"] == "error" for i in items)
+    if not args.write:
+        print("\n" + (f"Nothing changed yet. Run `verfy setup {scope}--undo --write` to do this; a backup of every changed file is kept."
+                      if todo else "Nothing here can be taken out for you."))
+        print(f"Your key, receipts and policy in {_short(verfy_home())} stay as they are.")
+        return 1 if failed else 0
+    if any(i.get("done") for i in items):
+        print("\nRestart the agents that are open. A backup of every changed file is kept (*.verfy-backup).")
+        print(f"Your key, receipts and policy in {_short(verfy_home())} are still there; `verfy setup {scope}--write` puts Verfy back.")
+    return 1 if failed else 0
 
 
 def _setup_finish(args, items: list[dict]) -> int:
@@ -2139,8 +2248,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
     p.set_defaults(fn=cmd_doctor)
 
-    p = sub.add_parser("posture", help="risky settings in each agent's own config (bypass modes, hooks switched off, no sandbox); changes nothing")
+    p = sub.add_parser("posture", help="risky settings in each agent's own config (bypass modes, hooks switched off, no sandbox); --fix shows the edits that take them away")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--fix", action="store_true", help="show the smallest edit that takes each finding away (one key set or removed); nothing is changed without --write")
+    p.add_argument("--write", action="store_true", help="with --fix: make the edits; the old file is kept next to each one")
+    p.add_argument("--min", choices=["low", "medium", "high"], default="low", help="with --fix: only findings at this severity or above (default: all)")
     p.set_defaults(fn=cmd_posture)
 
     p = sub.add_parser("setup", help="set Verfy up for every coding agent found here at once: hooks and MCP gateway")
@@ -2149,6 +2261,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--agent", action="append", choices=[a.key for a in agentlib.AGENTS], help="only this agent, even if it was not found (repeat for more)")
     p.add_argument("--hooks-only", action="store_true", help="add the hooks and leave the MCP configs as they are")
     p.add_argument("--system", action="store_true", help="put the Claude Code and Cursor hooks in machine-wide files that an agent running as you cannot change (needs administrator rights or sudo)")
+    p.add_argument("--undo", action="store_true", help="take Verfy out again: its hooks, the gateway in front of MCP servers and the sandboxed terminal; everything else in those files, and your key and receipts, stay (shows the changes; --write makes them)")
     p.add_argument("--sandbox-terminal", choices=["on", "off"], help="make the terminal of VS Code, Cursor and Windsurf open inside the sandbox, so their AI agents' commands run there (beta; on Windows through WSL2)")
     p.set_defaults(fn=cmd_setup)
 

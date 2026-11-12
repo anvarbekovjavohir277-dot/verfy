@@ -2,6 +2,22 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.21.0 (2026-11-12)
+
+- **`verfy setup --undo` takes Verfy out again.** It shows what it would change, and `--write` does it. Verfy's hook is taken out of every agent's file (Claude Code, Cursor, Codex CLI, Gemini CLI, Copilot, Devin, Windsurf), the MCP servers are taken out from behind the gateway, and the sandboxed terminal is removed. Everything else in those files stays, also what you changed after setup. A file that held nothing but Verfy's hook is removed. A backup of every changed file is kept, and your key, receipts and policy are not touched. `verfy setup --write` puts it all back.
+  - A remote server is put back from the backup file that setup made. Without that file it stays behind the gateway and is named, so nothing is left broken.
+  - Codex's `config.toml` is edited in place, with its comments kept.
+  - `--agent`, `--project` and `--hooks-only` work as they do for setup. `verfy setup --system --undo --write` (as administrator, or with sudo) takes out the machine-wide hooks.
+- **`verfy posture --fix` shows the edit that takes each finding away, and `--write` makes it.** Each fix is the smallest one: a key set or removed, or one entry taken out of a list. For example `bypassPermissions` becomes `default`, `disableAllHooks` is removed, and Codex's `approval_policy = "never"` becomes `"on-request"`. The old file is kept next to each changed one (`*.verfy-posture-backup`). `--min high` fixes only the high findings.
+  - A JSON file with comments is not rewritten, because the comments would be lost. Codex's `config.toml` is edited line by line and only written when the edited file says exactly what was meant. In both cases the finding is shown for you to change by hand.
+- **`verfy posture` reads GitHub Copilot's and Devin's settings too:**
+  - Copilot in VS Code (`settings.json`, also with comments): `chat.tools.global.autoApprove`, and `chat.permissions.default` set to `autoApprove` or `autopilot`;
+  - Copilot CLI (`~/.copilot/settings.json`): `disableAllHooks`;
+  - Devin CLI (`config.json`): `permission_mode` set to `dangerous`, and a blanket `exec` allow rule.
+- **The config rules run in the browser.** The JavaScript engine has `checkServer` and `checkConfig`: how an MCP server is launched (no pinned version, `curl | sh`, a privileged container, plain http, a key written into the config), the same rules as `verfy scan` (VFY-CFG-001 to 007). Both engines are tested against one fixture, `tests/fixtures/config.json`. [verfy.dev/check](https://verfy.dev/check) uses it: paste a config and see the findings, with nothing sent anywhere.
+- **The editor extension** has two new commands: *Fix risky agent settings* (`verfy posture --fix`) and *Take Verfy out of every agent* (`verfy setup --undo`). Both show the changes first and make them only after you agree.
+- **The research runs every week.** The workflow that records what popular MCP servers serve now runs every Monday, and each result says what its pins cover, so [verfy.dev/servers](https://verfy.dev/servers) can keep one history per server across runs.
+
 ## 0.20.0 (2026-11-11)
 
 - **Start in a minute.** `verfy posture` shows what is risky in your agents before you change anything. A ready workflow, [`examples/ci/verfy.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/verfy.yml), fails a pull request when an MCP tool changes; copy it to `.github/workflows/`. The [Verfy GitHub Action](https://github.com/anvarbekovjavohir277-dot/verfy-action) now installs 0.20.0 and has the `require-pinned` and `sarif` inputs that 0.19.0 announced but the published action did not have yet.

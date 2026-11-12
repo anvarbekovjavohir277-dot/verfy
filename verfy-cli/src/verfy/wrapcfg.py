@@ -141,36 +141,29 @@ def _value_end(lines: list[str], i: int) -> int:
     raise ValueError("a value that does not end")
 
 
-def _wrap_toml(text: str, exe: str, extra: list[str], skip_signin: bool) -> tuple[str, dict, list[str], dict[str, str]]:
+def _edit_toml(text: str, change) -> tuple[str, dict, list[str], dict[str, str]]:
+    """Rewrite the `command` and `args` lines of servers in a config.toml. `change(name, spec, has_table)` returns
+    (the new spec, None) or (None, why it is left; None to say nothing). The result is parsed again and compared."""
     try:
         import tomllib
     except ModuleNotFoundError:
         raise ValueError("editing Codex CLI's config.toml needs Python 3.11 or newer") from None
-    text = text.removeprefix("﻿")
+    text = text.removeprefix("\ufeff")
     before = tomllib.loads(text)
     servers = before.get("mcp_servers") if isinstance(before.get("mcp_servers"), dict) else {}
     lines = text.splitlines(keepends=True)
     newline = "\r\n" if "\r\n" in text else "\n"
     headers = {_header_name(l): i for i, l in enumerate(lines) if _header_name(l) is not None}
     expected = copy.deepcopy(before)
-    wrapped, left = [], {}
+    changed, left = [], {}
     edits: list[tuple[int, int, list[str]]] = []  # (first line, end line, new lines) per server, applied bottom up
     for name, spec in servers.items():
         if not isinstance(spec, dict):
             continue
-        if is_wrapped(spec, exe):
-            left[name] = "already behind the gateway"
-            continue
-        if "command" not in spec:
-            left[name] = "remote: Codex keeps it in config.toml, so put it behind the gateway by hand with verfy proxy --url"
-            continue
-        if name not in headers:
-            left[name] = "not written as a [mcp_servers.NAME] table, so Verfy does not edit it"
-            continue
-        new = dict(spec)
-        why = wrap_spec(new, name, exe, extra, skip_signin)
-        if why:
-            left[name] = why
+        new, why = change(name, spec, name in headers)
+        if new is None:
+            if why:
+                left[name] = why
             continue
         start = headers[name]
         end = next((i for i in range(start + 1, len(lines)) if re.match(r"^\s*\[", lines[i])), len(lines))
@@ -182,16 +175,124 @@ def _wrap_toml(text: str, exe: str, extra: list[str], skip_signin: bool) -> tupl
             body.append(lines[i])
             i += 1
         head = lines[start] if lines[start].endswith(("\n", "\r")) else lines[start] + newline
-        mine = [f"command = {toml_string(new['command'])}{newline}", f"args = [{', '.join(toml_string(a) for a in new['args'])}]{newline}"]
+        mine = [f"command = {toml_string(new['command'])}{newline}"]
+        if "args" in new:
+            mine.append(f"args = [{', '.join(toml_string(a) for a in new['args'])}]{newline}")
         edits.append((start, end, [head, *mine, *body]))
         expected["mcp_servers"][name] = new
-        wrapped.append(name)
+        changed.append(name)
     for start, end, new_lines in sorted(edits, reverse=True):
         lines[start:end] = new_lines
     out = "".join(lines)
     if tomllib.loads(out) != expected:
         raise ValueError("the edited config.toml would not say what was meant, so it was left alone")
-    return out, expected, wrapped, left
+    return out, expected, changed, left
+
+
+NO_TABLE = "not written as a [mcp_servers.NAME] table, so Verfy does not edit it"
+
+
+def _wrap_toml(text: str, exe: str, extra: list[str], skip_signin: bool) -> tuple[str, dict, list[str], dict[str, str]]:
+    def change(name: str, spec: dict, has_table: bool):
+        if is_wrapped(spec, exe):
+            return None, "already behind the gateway"
+        if "command" not in spec:
+            return None, "remote: Codex keeps it in config.toml, so put it behind the gateway by hand with verfy proxy --url"
+        if not has_table:
+            return None, NO_TABLE
+        new = dict(spec)
+        why = wrap_spec(new, name, exe, extra, skip_signin)
+        return (None, why) if why else (new, None)
+
+    return _edit_toml(text, change)
+
+
+# ---------------------------------------------------------------- taking servers out again (verfy setup --undo)
+
+def behind_gateway(spec: dict) -> list[str] | None:
+    """What a wrapped server really runs (the part after `--`), or None when `verfy wrap` did not write this entry."""
+    args = spec.get("args")
+    if not is_wrapped(spec) or not isinstance(args, list) or args[:1] != ["proxy"] or "--" not in args:
+        return None
+    tail = [str(a) for a in args[args.index("--") + 1:]]
+    return tail or None
+
+
+def unwrap_spec(spec: dict, before: dict | None) -> str | None:
+    """Take one server out from behind the gateway, in place. `before` is its entry in the backup file, when there is
+    one. Returns why it was left alone, or None when it was changed."""
+    tail = behind_gateway(spec)
+    if tail is None:
+        return "not behind the gateway"
+    if len(tail) >= 4 and tail[1:3] == ["bridge", "--url"] and is_wrapped({"command": tail[0]}):
+        # a remote server: which keys held its address and headers is only known from the backup
+        url = tail[3]
+        if not (isinstance(before, dict) and "command" not in before and str(cfgscan.server_url(before)) == url):
+            return f"remote ({url}): its entry from before is not in the backup file, so put its address back by hand"
+        spec.pop("command", None)
+        spec.pop("args", None)
+        env = {k: v for k, v in (spec.get("env") or {}).items() if k != HEADERS_ENV} if isinstance(spec.get("env"), dict) else spec.get("env")
+        if env:
+            spec["env"] = env
+        else:
+            spec.pop("env", None)
+        spec.update({k: copy.deepcopy(before[k]) for k in REMOTE_KEYS if k in before})
+        return None
+    spec["command"] = tail[0]
+    same = isinstance(before, dict) and "command" in before and [str(before["command"]), *[str(a) for a in before.get("args") or []]] == tail
+    if same and "args" in before:
+        spec["args"] = copy.deepcopy(before["args"])  # as it was written, also when it was an empty list
+    elif tail[1:]:
+        spec["args"] = tail[1:]
+    else:
+        spec.pop("args", None)
+    return None
+
+
+def same_config(path: Path, a: str, b: str) -> bool:
+    """True when two texts of one config file say the same (JSON or TOML)."""
+    if path.suffix.lower() == ".toml":
+        import tomllib
+        return tomllib.loads(a) == tomllib.loads(b)
+    return json.loads(a) == json.loads(b)
+
+
+def unwrap_text(path: Path, text: str, backup: str | None = None) -> tuple[str, list[str], dict[str, str]]:
+    """The config with its servers taken out from behind the gateway. Returns (new text, names changed, {name: why
+    it was left}). A server that is not behind the gateway is not mentioned."""
+    if path.suffix.lower() == ".toml":
+        def change(name: str, spec: dict, has_table: bool):
+            if behind_gateway(spec) is None:
+                return None, None
+            if not has_table:
+                return None, NO_TABLE
+            new = copy.deepcopy(spec)
+            why = unwrap_spec(new, None)
+            return (None, why) if why else (new, None)
+
+        out, _cfg, changed, left = _edit_toml(text, change)
+        return out, changed, left
+    cfg = json.loads(text.removeprefix("\ufeff"))
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{path} does not hold a JSON object")
+    old: dict = {}
+    try:
+        was = json.loads(backup.removeprefix("\ufeff")) if backup else {}
+        key = servers_key(was) if isinstance(was, dict) else None
+        old = was[key] if key else {}
+    except ValueError:
+        pass
+    key = servers_key(cfg)
+    changed, left = [], {}
+    for name, spec in (cfg.get(key) or {}).items() if key else ():
+        if not isinstance(spec, dict) or behind_gateway(spec) is None:
+            continue
+        why = unwrap_spec(spec, old.get(name))
+        if why:
+            left[name] = why
+        else:
+            changed.append(name)
+    return json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", changed, left
 
 
 def hidden_values(v: Any, key: str = "") -> Any:

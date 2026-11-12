@@ -149,6 +149,18 @@ class Crypto(unittest.TestCase):
                 self.assertEqual(os.stat(Path(d) / "k.json").st_mode & 0o777, 0o600)
 
 
+class ConfigFixture(unittest.TestCase):
+    """tests/fixtures/config.json is what both engines must say about how a server is launched."""
+
+    def test_python_says_what_the_fixture_says(self):
+        from verfy import discover
+        fx = json.loads((FX / "config.json").read_text("utf-8"))
+        for c in fx["cases"]:
+            spec = json.loads(json.dumps(c["spec"]).replace(fx["token"], "ghp_" + "a" * 36))
+            self.assertEqual(discover.check_server(c["name"], spec, set(c["local"])), c["expect"], c["name"])
+        self.assertNotIn("ghp_", (FX / "config.json").read_text("utf-8"))
+
+
 @unittest.skipUnless(NODE, "node is not installed")
 class CrossEngine(unittest.TestCase):
     def test_javascript_fixtures(self):

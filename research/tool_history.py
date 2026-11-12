@@ -2,7 +2,8 @@
 
 For one server from servers.json: take its newest N releases from npm or PyPI, start each one
 the way an MCP client would (npx / uvx), ask for tools/list, and record every tool definition,
-its Verfy pin (SHA-256 of name, description and input schema) and the Verfy scanner's findings.
+its Verfy pin (SHA-256 of name, description, input schema and, when the server sends them, title,
+annotations and output schema) and the Verfy scanner's findings. Prompts are listed as `prompt:NAME`.
 
     python research/tool_history.py SERVER_ID --versions 6 --out results/SERVER_ID.json
 
@@ -27,7 +28,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "verfy-cli" / "src"))
 
 from verfy.mcp_client import MCPError, list_tools  # noqa: E402
-from verfy.scanner import scan, tool_pin  # noqa: E402
+from verfy import __version__  # noqa: E402
+from verfy.scanner import PINNED_EXTRAS, scan, tool_pin  # noqa: E402
 
 STABLE = re.compile(r"^\d+(\.\d+)*$")
 
@@ -76,7 +78,10 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     server = next(s for s in json.loads(Path(a.servers).read_text("utf-8")) if s["id"] == a.server)
-    out: dict = {"server": server, "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "releases": []}
+    out: dict = {"server": server, "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                 # what this run's pins cover: results of runs that pinned different fields are compared by text, not by pin
+                 "collector": {"verfy": __version__, "pin": ["name", "description", "inputSchema", *PINNED_EXTRAS], "prompts": True},
+                 "releases": []}
     try:
         rel = releases(server["eco"], server["pkg"], a.versions)
     except Exception as e:  # noqa: BLE001 - recorded, not fatal
