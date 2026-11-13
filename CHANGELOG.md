@@ -2,6 +2,15 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.22.0 (2026-11-13)
+
+- **`verfy posture` says when an agent's own sandbox is off, and `--fix` turns it on.** Verfy checks the command that starts a script the agent wrote, not what the script then does; the operating system sandbox each agent has holds that. Now:
+  - **Claude Code** (`sandbox.enabled`, medium): the fix turns the sandbox on, keeps commands inside it (`allowUnsandboxedCommands: false`) and closes the credential folders, as `verfy sandbox sync` does. On native Windows, where Claude Code's sandbox does not run, posture says so and points to WSL2 instead of editing anything.
+  - **Gemini CLI** (`security.toolSandboxing`, medium; the older `tools.sandbox` counts too): the fix sets it to true.
+  - **Copilot in VS Code** (`chat.agent.sandbox.enabled`, low): the fix sets it to `"on"`, also in a settings file with comments, which is kept as it was.
+
+  A sandbox turned on in the project's settings counts. The fix creates a settings file the agent has not written yet. Codex's `danger-full-access` was already reported; Cursor and Devin Desktop keep their sandbox setting in the app, where Verfy does not read it.
+
 ## 0.21.0 (2026-11-12)
 
 - **`verfy setup --undo` takes Verfy out again.** It shows what it would change, and `--write` does it. Verfy's hook is taken out of every agent's file (Claude Code, Cursor, Codex CLI, Gemini CLI, Copilot, Devin, Windsurf), the MCP servers are taken out from behind the gateway, and the sandboxed terminal is removed. Everything else in those files stays, also what you changed after setup. A file that held nothing but Verfy's hook is removed. A backup of every changed file is kept, and your key, receipts and policy are not touched. `verfy setup --write` puts it all back.

@@ -27,6 +27,9 @@ class Home(unittest.TestCase):
         no_path = mock.patch("shutil.which", return_value=None)
         no_path.start()
         self.addCleanup(no_path.stop)
+        unix = mock.patch.object(posture, "WINDOWS", False)  # Claude Code's sandbox finding differs on native Windows
+        unix.start()
+        self.addCleanup(unix.stop)
 
     def put(self, rel, data, base=None):
         p = (base or self.home) / rel
@@ -264,7 +267,8 @@ class PostureMoreAgentsTests(Home):
         self.put(".vscode/settings.json", {"chat.permissions.default": "autoApprove"}, self.cwd)
         self.assertEqual(self.found(), {("GitHub Copilot (VS Code)", "chat.tools.global.autoApprove = true", "high"),
                                         ("GitHub Copilot (VS Code)", 'chat.permissions.default = "autopilot"', "high"),
-                                        ("GitHub Copilot (VS Code)", 'chat.permissions.default = "autoApprove"', "high")})
+                                        ("GitHub Copilot (VS Code)", 'chat.permissions.default = "autoApprove"', "high"),
+                                        ("GitHub Copilot (VS Code)", 'chat.agent.sandbox.enabled is not "on"', "low")})
 
     def test_copilot_cli_and_devin(self):
         self.put(".copilot/settings.json", {"disableAllHooks": True, "askUser": True})
@@ -275,7 +279,7 @@ class PostureMoreAgentsTests(Home):
                                         ("Devin", "permissions.allow contains exec, Exec(**)", "medium")})
 
     def test_safe_values_are_not_reported(self):
-        self.put(".config/Code/User/settings.json", {"chat.tools.global.autoApprove": False, "chat.permissions.default": "default"})
+        self.put(".config/Code/User/settings.json", {"chat.tools.global.autoApprove": False, "chat.permissions.default": "default", "chat.agent.sandbox.enabled": "on"})
         self.put(".copilot/settings.json", {"disableAllHooks": False})
         self.put(".devin/config.json", {"permission_mode": "smart", "permissions": {"allow": ["Exec(npm test)", "Read(**)"]}}, self.cwd)
         self.assertEqual(self.found(), set())
@@ -283,6 +287,55 @@ class PostureMoreAgentsTests(Home):
     def test_jsonc(self):
         self.assertEqual(json.loads(posture.strip_jsonc('{"a": "x // not a comment", /* c */ "b": [1, 2,], // end\n}')),
                          {"a": "x // not a comment", "b": [1, 2]})
+
+
+class SandboxPostureTests(Home):
+    def found(self):
+        return {(f["agent"], f["setting"], f["severity"], bool(f["edit"])) for f in posture.check(self.home, self.cwd)}
+
+    def test_each_agent_sandbox_off_on_and_fixed(self):
+        (self.home / ".claude").mkdir()
+        (self.home / ".gemini").mkdir()
+        self.put(".config/Code/User/settings.json", {"editor.fontSize": 14})
+        self.assertEqual(self.found(), {("Claude Code", "sandbox.enabled is not true", "medium", True),
+                                        ("Gemini CLI", "security.toolSandboxing is off", "medium", True),
+                                        ("GitHub Copilot (VS Code)", 'chat.agent.sandbox.enabled is not "on"', "low", True)})
+        code, out = self.cli("posture", "--fix", "--write")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.found(), set())
+        self.assertTrue(self.read(".claude/settings.json")["sandbox"]["enabled"])  # the file did not exist before
+        self.assertIn("~/.ssh", self.read(".claude/settings.json")["sandbox"]["filesystem"]["denyRead"])
+        self.assertEqual(self.read(".gemini/settings.json"), {"security": {"toolSandboxing": True}})
+
+    def test_on_somewhere_counts(self):
+        self.put(".claude/settings.json", {"model": "x"})
+        self.put(".claude/settings.local.json", {"sandbox": {"enabled": True}}, self.cwd)  # the project turns it on
+        self.put(".gemini/settings.json", {"tools": {"sandbox": "docker"}})  # the older full-process sandbox
+        self.put(".config/Code/User/settings.json", {"editor.fontSize": 14})
+        self.put(".vscode/settings.json", {"chat.agent.sandbox.enabled": "on"}, self.cwd)
+        self.assertEqual(self.found(), set())
+
+    def test_native_windows_points_to_wsl_and_edits_nothing(self):
+        claude = self.put(".claude/settings.json", {"model": "x"})
+        with mock.patch.object(posture, "WINDOWS", True):
+            self.assertEqual(self.found(), {("Claude Code", "its sandbox does not run on native Windows", "low", False)})
+            code, out = self.cli("posture", "--fix", "--write")
+        self.assertIn("WSL2", out)
+        self.assertEqual(self.read(".claude/settings.json"), {"model": "x"})
+        self.assertFalse(claude.with_suffix(".json" + posture.BACKUP).exists())
+
+    def test_jsonc_insert(self):
+        cases = [
+            ('{}', '{ "k": "on" }'),
+            ('{\n}\n', '{\n    "k": "on"\n}\n'),
+            ('{\n  "a": 1 // c\n}', '{\n  "a": 1, // c\n  "k": "on"\n}'),
+            ('{\n  "a": 1,\n}', '{\n  "a": 1,\n  "k": "on"\n}'),
+            ('{"a": 1}', '{"a": 1, "k": "on" }'),
+        ]
+        for text, want in cases:
+            got = posture._jsonc_edit(text, ("set", ("k",), "on"))
+            self.assertEqual(got, want, text)
+            self.assertEqual(json.loads(posture.strip_jsonc(got))["k"], "on")
 
 
 class PostureFixTests(Home):
@@ -293,11 +346,15 @@ class PostureFixTests(Home):
         code, out = self.cli("posture", "--fix")
         self.assertEqual(code, 2)
         self.assertIn('would set permissions.defaultMode to "default"', out)
-        self.assertIn("Nothing changed yet. Run `verfy posture --fix --write` to make these 4 edits", out)
+        self.assertIn("would turn on Claude Code's sandbox", out)
+        self.assertIn("Nothing changed yet. Run `verfy posture --fix --write` to make these 5 edits", out)
         self.assertEqual(claude.read_bytes(), before)
         code, out = self.cli("posture", "--fix", "--write")
         self.assertEqual(code, 0, out)
-        self.assertEqual(self.read(".claude/settings.json"), {"permissions": {"defaultMode": "default", "allow": ["Bash(npm test)"]}, "model": "opus"})
+        from verfy import sandbox
+        want, _ = sandbox.with_sandbox({"permissions": {"defaultMode": "default", "allow": ["Bash(npm test)"]}, "model": "opus"}, [])
+        self.assertEqual(self.read(".claude/settings.json"), want)
+        self.assertEqual(want["sandbox"]["enabled"], True)
         self.assertEqual((self.home / (".claude/settings.json" + posture.BACKUP)).read_bytes(), before)
         self.assertIn("Left: no risky setting found.", out)
         self.assertEqual(self.cli("posture")[0], 0)
@@ -307,7 +364,7 @@ class PostureFixTests(Home):
         code, out = self.cli("posture", "--fix", "--min", "high", "--write")
         self.assertEqual(code, 1, out)  # the medium one is left
         self.assertEqual(self.read(".claude/settings.json"), {"enableAllProjectMcpServers": True})
-        self.assertIn("Left: 1 medium", out)
+        self.assertIn("Left: 2 medium", out)  # enableAllProjectMcpServers and the sandbox
 
     def test_gemini_cursor_copilot_devin(self):
         self.put(".gemini/settings.json", {"hooksConfig": {"enabled": False, "disabled": ["other", "verfy"]}, "general": {"defaultApprovalMode": "auto_edit"}})
@@ -316,7 +373,8 @@ class PostureFixTests(Home):
         self.put(".devin/config.json", {"permission_mode": "dangerous", "permissions": {"allow": ["exec", "Read(**)"]}}, self.cwd)
         code, out = self.cli("posture", "--fix", "--write")
         self.assertEqual(code, 0, out)
-        self.assertEqual(self.read(".gemini/settings.json"), {"hooksConfig": {"disabled": ["other"]}, "general": {"defaultApprovalMode": "default"}})
+        self.assertEqual(self.read(".gemini/settings.json"), {"hooksConfig": {"disabled": ["other"]}, "general": {"defaultApprovalMode": "default"},
+                                                              "security": {"toolSandboxing": True}})
         self.assertEqual(self.read(".cursor/hooks.json")["hooks"]["beforeShellExecution"], [{"command": "verfy hook cursor", "failClosed": True}, {"command": "other"}])
         self.assertEqual(self.read(".copilot/settings.json"), {"askUser": True})
         self.assertEqual(self.read(".devin/config.json", self.cwd), {"permission_mode": "normal", "permissions": {"allow": ["Read(**)"]}})
@@ -328,7 +386,8 @@ class PostureFixTests(Home):
         code, out = self.cli("posture", "--fix", "--write")
         self.assertEqual(code, 0, out)
         self.assertEqual(settings.read_text("utf-8"),
-                         '{\n    // keep me\n    "editor.fontSize": 14, /* and me */\n    "chat.permissions.default": "default" // mode\n}\n')
+                         '{\n    // keep me\n    "editor.fontSize": 14, /* and me */\n    "chat.permissions.default": "default", // mode\n'
+                         '    "chat.agent.sandbox.enabled": "on"\n}\n')
         self.assertEqual(settings.with_suffix(".json" + posture.BACKUP).read_text("utf-8"), text)
 
     def test_jsonc_edits(self):
@@ -360,12 +419,15 @@ class PostureFixTests(Home):
         claude.parent.mkdir(parents=True)
         claude.write_bytes(b'{\r\n  "enableAllProjectMcpServers": true,\r\n  "model": "opus"\r\n}\r\n')
         self.cli("posture", "--fix", "--write")
-        self.assertEqual(claude.read_bytes(), b'{\r\n  "model": "opus"\r\n}\r\n')
+        data = claude.read_bytes()
+        self.assertEqual(data.count(b"\n"), data.count(b"\r\n"))  # every line still ends in CRLF
+        self.assertTrue(data.startswith(b'{\r\n  "model": "opus",\r\n'))  # the sandbox fix adds its own lines
+        self.assertNotIn(b"enableAllProjectMcpServers", data)
 
     def test_the_files_indent_is_kept(self):
         settings = self.put(".config/Code/User/settings.json", '{\n    "editor.fontSize": 14,\n    "chat.tools.global.autoApprove": true\n}\n')
         self.cli("posture", "--fix", "--write")
-        self.assertEqual(settings.read_text("utf-8"), '{\n    "editor.fontSize": 14\n}\n')
+        self.assertEqual(settings.read_text("utf-8"), '{\n    "editor.fontSize": 14,\n    "chat.agent.sandbox.enabled": "on"\n}\n')
 
     @unittest.skipIf(sys.version_info < (3, 11), "TOML needs Python 3.11")
     def test_codex_toml_line_by_line(self):

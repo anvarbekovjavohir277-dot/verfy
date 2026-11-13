@@ -455,8 +455,12 @@ class ClaudeInstallTests(unittest.TestCase):
 
 class PostureTests(unittest.TestCase):
     def setUp(self):
+        from verfy import posture
         self.home = Path(tempfile.mkdtemp())
         self.cwd = Path(tempfile.mkdtemp())
+        unix = mock.patch.object(posture, "WINDOWS", False)  # Claude Code's sandbox finding differs on native Windows
+        unix.start()
+        self.addCleanup(unix.stop)
         self.addCleanup(shutil.rmtree, self.home, True)
         self.addCleanup(shutil.rmtree, self.cwd, True)
 
@@ -471,14 +475,15 @@ class PostureTests(unittest.TestCase):
 
     def test_a_clean_machine_has_nothing_to_report(self):
         from verfy import posture
-        self.put(".claude/settings.json", {"permissions": {"defaultMode": "default", "allow": ["Bash(npm test)"]}})
+        self.put(".claude/settings.json", {"permissions": {"defaultMode": "default", "allow": ["Bash(npm test)"]}, "sandbox": {"enabled": True}})
         self.assertEqual(posture.check(self.home, self.cwd), [])
         self.assertEqual(posture.worst([]), 0)
 
     def test_claude_code(self):
         self.put(".claude/settings.json", {"permissions": {"defaultMode": "bypassPermissions", "allow": ["Bash(*)"]}, "disableAllHooks": True, "enableAllProjectMcpServers": True})
         self.assertEqual(self.settings(), {("Claude Code", "permissions.defaultMode", "high"), ("Claude Code", "disableAllHooks", "high"),
-                                           ("Claude Code", "permissions.allow", "medium"), ("Claude Code", "enableAllProjectMcpServers", "medium")})
+                                           ("Claude Code", "permissions.allow", "medium"), ("Claude Code", "enableAllProjectMcpServers", "medium"),
+                                           ("Claude Code", "sandbox.enabled", "medium")})
 
     @unittest.skipIf(sys.version_info < (3, 11), "TOML needs Python 3.11")
     def test_codex_also_in_a_profile(self):

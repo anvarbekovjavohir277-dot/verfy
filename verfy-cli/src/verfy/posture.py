@@ -18,6 +18,11 @@ documented setting of that agent:
 * Devin CLI (config.json): ``permission_mode`` ``dangerous``, a blanket ``exec`` allow rule. Devin Desktop keeps its
   own mode in the app. https://docs.devin.ai/cli/reference/configuration/config-file
 
+Each agent's own sandbox, when it is off. Verfy checks the command that starts a script the agent wrote, not what the
+script then does; the operating system sandbox holds that. Claude Code: ``sandbox.enabled`` (it does not run on native
+Windows). Gemini CLI: ``security.toolSandboxing`` or the older ``tools.sandbox`` (0.68.0 schema). Copilot in VS Code:
+``chat.agent.sandbox.enabled``. Codex's ``danger-full-access`` is above; Cursor and Devin Desktop keep theirs in the app.
+
 Severities: high (the agent acts without any check, or Verfy is off), medium (fewer checks than it looks), low.
 
 A fix is the smallest edit that takes the finding away: one key set or removed, or one entry taken out of a list.
@@ -30,15 +35,18 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 from . import hook as hooks
+from . import sandbox as sandboxlib
 from . import wrapcfg
 
 RANK = {"low": 1, "medium": 2, "high": 3}
+WINDOWS = os.name == "nt"  # Claude Code's sandbox does not run on native Windows
 BACKUP = ".verfy-posture-backup"
 VSCODE_USER = (("AppData", "Roaming", "Code", "User"), ("Library", "Application Support", "Code", "User"), (".config", "Code", "User"))
 
@@ -250,6 +258,59 @@ def devin(path: Path) -> list[dict]:
     return out
 
 
+SCRIPT_NOTE = "Verfy checks the command that starts a script the agent wrote, not what the script then does: the sandbox holds that."
+
+
+def claude_sandbox(home: Path, cwd: Path) -> list[dict]:
+    """Claude Code's own sandbox, as the nearest settings file sets it, reported on the user's settings file."""
+    if not (home / ".claude").is_dir():
+        return []
+    path = home / ".claude" / "settings.json"
+    if sandboxlib.effective(cwd, home)["enabled"] is True:
+        return []
+    if WINDOWS:
+        return [_f("Claude Code", path, "low", "its sandbox does not run on native Windows",
+                   "Commands Claude Code runs here, and scripts the agent writes, are not sandboxed. " + SCRIPT_NOTE,
+                   "Run Claude Code in WSL2, where `verfy posture --fix` can turn the sandbox on.", None, "")]
+    return [_f("Claude Code", path, "medium", "sandbox.enabled is not true",
+               "Claude Code's own sandbox is off, so a script the agent writes and runs can do whatever you can. " + SCRIPT_NOTE,
+               "Turn it on; `verfy sandbox sync --write` then adds the hosts your Verfy policy allows.",
+               ("sandbox",), "turn on Claude Code's sandbox: commands stay in it, credential folders closed")]
+
+
+def gemini_sandbox(home: Path, cwd: Path) -> list[dict]:
+    """Gemini CLI's sandbox, from the project's settings or the user's, reported on the user's settings file."""
+    if not (home / ".gemini").is_dir():
+        return []
+    for p in (cwd / ".gemini" / "settings.json", home / ".gemini" / "settings.json"):
+        cfg = _json(p) or {}
+        security = cfg.get("security") if isinstance(cfg.get("security"), dict) else {}
+        tools = cfg.get("tools") if isinstance(cfg.get("tools"), dict) else {}
+        if security.get("toolSandboxing") is True or tools.get("sandbox") not in (None, False, "", "false"):
+            return []
+    path = home / ".gemini" / "settings.json"
+    return [_f("Gemini CLI", path, "medium", "security.toolSandboxing is off",
+               "Gemini CLI's own sandbox is off, so a script the agent writes and runs can do whatever you can. " + SCRIPT_NOTE,
+               "Set security.toolSandboxing to true.", ("set", ("security", "toolSandboxing"), True), "set security.toolSandboxing to true")]
+
+
+def vscode_sandbox(home: Path, cwd: Path) -> list[dict]:
+    """The sandbox for the commands Copilot's agent runs in VS Code, in the user's settings, unless the workspace turns it on."""
+    if (_json(cwd / ".vscode" / "settings.json") or {}).get("chat.agent.sandbox.enabled") == "on":
+        return []
+    for d in VSCODE_USER:
+        path = home.joinpath(*d, "settings.json")
+        cfg = _json(path) if path.is_file() else None
+        if cfg is None:
+            continue
+        if cfg.get("chat.agent.sandbox.enabled") == "on":
+            return []
+        return [_f("GitHub Copilot (VS Code)", path, "low", 'chat.agent.sandbox.enabled is not "on"',
+                   "Commands Copilot's agent runs in VS Code are not sandboxed, so a script it writes can do whatever you can. " + SCRIPT_NOTE,
+                   'Set it to "on".', ("set", ("chat.agent.sandbox.enabled",), "on"), 'set chat.agent.sandbox.enabled to "on"')]
+    return []
+
+
 def _places(home: Path, cwd: Path) -> list:
     return [
         (claude, home / ".claude" / "settings.json"), (claude, cwd / ".claude" / "settings.json"), (claude, cwd / ".claude" / "settings.local.json"),
@@ -285,6 +346,7 @@ def check(home: Path, cwd: Path) -> list[dict]:
     out: list[dict] = []
     for fn, path in _each(home, cwd):
         out += fn(path)
+    out += claude_sandbox(home, cwd) + gemini_sandbox(home, cwd) + vscode_sandbox(home, cwd)
     return sorted(out, key=lambda f: -RANK[f["severity"]])
 
 
@@ -313,9 +375,14 @@ def _apply_json(cfg: dict, edit: tuple) -> None:
             if isinstance(e, dict) and e.get("command") == hooks.CURSOR_COMMAND:
                 e["failClosed"] = True
         return
+    if edit[0] == "sandbox":
+        updated, _changed = sandboxlib.with_sandbox(cfg, [])
+        cfg.clear()
+        cfg.update(updated)
+        return
     node = cfg
     for key in edit[1][:-1]:
-        node = node[key]
+        node = node.setdefault(key, {}) if edit[0] == "set" else node[key]
     last = edit[1][-1]
     if edit[0] == "set":
         node[last] = edit[2]
@@ -419,12 +486,34 @@ def _jsonc_member(text: str, key: str) -> tuple[int, int, int, int, int] | None:
     return None
 
 
+def _jsonc_insert(text: str, key: str, value) -> str:
+    """Add a top-level member after the last one, with the file's indent; a comment at the end of that line stays there."""
+    toks = _tokens(text)
+    close = len(toks) - 1
+    while close >= 0 and toks[close][0] != "}":
+        close -= 1
+    if close < 1:
+        raise ValueError("not a JSON object")
+    prev = toks[close - 1]
+    member = json.dumps(key, ensure_ascii=False) + ": " + json.dumps(value, ensure_ascii=False)
+    sep = "" if prev[0] in "{," else ","
+    at = prev[2]
+    m = re.search(r'\n([ \t]+)"', text)
+    indent = m.group(1) if m else "    "
+    nl = text.find("\n", at)
+    if 0 <= nl < toks[close][1]:
+        return text[:at] + sep + text[at:nl] + "\n" + indent + member + text[nl:]
+    return text[:at] + sep + " " + member + " " + text[at:].lstrip(" ")
+
+
 def _jsonc_edit(text: str, edit: tuple) -> str:
     """Set or remove one top-level key in JSON with comments, leaving every other character as it was."""
     op, path = edit[0], edit[1]
     if op not in ("set", "del") or len(path) != 1:
         raise ValueError("it has comments, and only a top-level key is changed in such a file; change it by hand")
     where = _jsonc_member(text, path[0])
+    if where is None and op == "set":
+        return _jsonc_insert(text, path[0], edit[2])
     if where is None:
         raise ValueError(f"{path[0]} is not at the top level; change it by hand")
     key_start, value_start, value_end, k, after = where
@@ -462,7 +551,7 @@ def fix_plan(findings: list[dict]) -> list[dict]:
         path = Path(name)
         item: dict = {"path": path, "findings": fs}
         try:
-            text = path.read_bytes().decode("utf-8-sig")  # as it is, line endings included
+            text = path.read_bytes().decode("utf-8-sig") if path.exists() else "{}\n"  # as it is, line endings included
             if path.suffix.lower() == ".toml":
                 import tomllib
                 expected, new = copy.deepcopy(tomllib.loads(text)), text
@@ -512,7 +601,10 @@ def apply_fixes(items: list[dict]) -> list[dict]:
             continue
         path: Path = item["path"]
         try:
-            shutil.copyfile(path, path.with_suffix(path.suffix + BACKUP))
+            if path.exists():
+                shutil.copyfile(path, path.with_suffix(path.suffix + BACKUP))
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)  # a settings file the agent has not written yet
             path.write_text(item["text"], "utf-8", newline="")
             item["done"] = True
         except OSError as e:

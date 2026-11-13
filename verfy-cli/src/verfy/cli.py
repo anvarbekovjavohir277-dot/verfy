@@ -1539,8 +1539,11 @@ def cmd_posture(args) -> int:
 def _posture_fix(args, found: list[dict]) -> int:
     """Show the edits that take the findings away; make them with --write, keeping the old file next to each."""
     wanted = [f for f in found if posturelib.RANK[f["severity"]] >= posturelib.RANK[args.min]]
+    for f in [f for f in wanted if not f.get("edit")]:
+        print(f"{_short(Path(f['path']))}\n        {f['agent']}: {f['setting']} ({f['severity']}). {f['fix']}")
+    wanted = [f for f in wanted if f.get("edit")]
     if not wanted:
-        print(f"Nothing at severity {args.min} or above to fix ({posturelib.summary(found)}).")
+        print(f"Nothing at severity {args.min} or above that an edit can fix ({posturelib.summary(found)}).")
         return posturelib.worst(found)
     items = posturelib.fix_plan(wanted)
     if args.write:
@@ -1560,7 +1563,7 @@ def _posture_fix(args, found: list[dict]) -> int:
         return posturelib.worst(found)
     changed = [i for i in items if i.get("done")]
     if changed:
-        print(f"\nChanged {len(changed)} file{'s' if len(changed) != 1 else ''}; the old one is kept next to each (*{posturelib.BACKUP}). Restart the agents that are open.")
+        print(f"\nChanged {len(changed)} file{'s' if len(changed) != 1 else ''}; a file that was there before is kept next to it (*{posturelib.BACKUP}). Restart the agents that are open.")
     print("Left: " + posturelib.summary(left) + ".")
     return posturelib.worst(left)
 

@@ -61,7 +61,7 @@ verfy posture --fix            # the smallest edit that takes each finding away;
 verfy posture --fix --write    # makes the edits; the old file is kept next to each one
 ```
 
-It reads the settings of Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (VS Code and CLI) and Devin CLI. A fix sets or removes one key, or takes one entry out of a list: `bypassPermissions` becomes `default`, `disableAllHooks` is removed, `approval_policy = "never"` becomes `"on-request"`. `--min high` fixes only the high ones. A JSON file with comments is not rewritten (the comments would be lost), and Codex's `config.toml` is only written when the edited file says exactly what was meant; in both cases the finding is shown for you to change by hand.
+It reads the settings of Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (VS Code and CLI) and Devin CLI, and says when an agent's own sandbox is off: Verfy checks the command that starts a script the agent wrote, not what the script then does, and the sandbox holds that. The fix turns on Claude Code's sandbox (not on native Windows, where it does not run: use WSL2), Gemini CLI's `security.toolSandboxing` and VS Code's `chat.agent.sandbox.enabled`. A fix sets or removes one key, or takes one entry out of a list: `bypassPermissions` becomes `default`, `disableAllHooks` is removed, `approval_policy = "never"` becomes `"on-request"`. `--min high` fixes only the high ones. A JSON file with comments is not rewritten (the comments would be lost), and Codex's `config.toml` is only written when the edited file says exactly what was meant; in both cases the finding is shown for you to change by hand.
 
 ### Secrets in prompts
 
@@ -221,7 +221,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.21.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.22.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
