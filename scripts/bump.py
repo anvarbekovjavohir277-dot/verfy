@@ -23,6 +23,7 @@ FILES = [
     ("pyproject.toml", r"verfy==\d+\.\d+\.\d+", "verfy=={v}"),
     (".pre-commit-hooks.yaml", r"rev: cli-v\d+\.\d+\.\d+", "rev: cli-v{v}"),
     ("verfy-cli/README.md", r"rev: cli-v\d+\.\d+\.\d+", "rev: cli-v{v}"),
+    ("server.json", r'"version": "\d+\.\d+\.\d+"', '"version": "{v}"'),
     ("verfy-cli/examples/ci/gitlab-ci.yml", r'VERFY_VERSION: "\d+\.\d+\.\d+"', 'VERFY_VERSION: "{v}"'),
 ]
 

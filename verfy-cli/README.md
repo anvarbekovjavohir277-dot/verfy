@@ -405,3 +405,5 @@ cd verfy-cli && python -m unittest discover -s tests     # needs Node for the cr
 ## Limits
 
 Rules are pattern matching, not a sandbox; for isolation, use `verfy run --sandbox`. Verfy sees only calls that pass through its hook or gateway. A receipt proves what Verfy decided and that the log was not edited, not what a tool did internally. Keep `~/.verfy/key.json` private.
+
+<!-- mcp-name: io.github.anvarbekovjavohir277-dot/verfy -->

@@ -18,6 +18,8 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 - **The research covers 99 MCP servers,** up from 46: every added server has at least 2,000 downloads a week on npm or PyPI.
 - The JavaScript engine has `packageOf`: the package a server is started from, also behind a gateway. [verfy.dev/check](https://verfy.dev/check) uses it to show how often that server changed its tools.
 - `verfy posture --json` says for each finding whether `--fix` can fix it (`fixable`).
+- **In the MCP Registry:** `server.json` describes `verfy mcp` for the official registry (`io.github.anvarbekovjavohir277-dot/verfy`, the PyPI package started with `mcp`), and the PyPI description carries the ownership line it checks.
+- **Homebrew, Scoop and a container image.** verfy-releases is also a Homebrew tap and a Scoop bucket, refreshed by each release build with that release's files and checksums, and each release publishes `ghcr.io/anvarbekovjavohir277-dot/verfy` with Node.js and uv for CI. A workflow installs all three on clean machines.
 
 ## 0.22.0 (2026-11-13)
 
