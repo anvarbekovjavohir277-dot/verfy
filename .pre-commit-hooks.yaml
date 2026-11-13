@@ -1,8 +1,8 @@
 # Hooks for pre-commit (https://pre-commit.com). In your .pre-commit-config.yaml:
 #
 #   repos:
-#     - repo: https://github.com/anvarbekovjavohir277-dot/verfy
-#       rev: cli-v0.23.0
+#     - repo: https://github.com/verfy-dev/verfy
+#       rev: cli-v0.23.1
 #       hooks:
 #         - id: verfy-mcp-config
 #         - id: verfy-lock        # optional: starts the MCP servers

@@ -22,7 +22,7 @@ from .fileio import atomic_write
 INSTALL_SH = "https://verfy.dev/install.sh"
 INSTALL_PS1 = "https://verfy.dev/install.ps1"
 # the web page, not the API: GitHub's API allows few anonymous calls per IP, and many people share one
-RELEASES = "https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases/latest"
+RELEASES = "https://github.com/verfy-dev/verfy-releases/releases/latest"
 PYPI = "https://pypi.org/pypi/verfy/json"
 CHECK_EVERY = 24 * 3600
 MODES = ("manual", "auto")

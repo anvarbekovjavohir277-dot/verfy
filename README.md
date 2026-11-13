@@ -1,6 +1,6 @@
 # Verfy
 
-[![CI](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml/badge.svg)](https://github.com/anvarbekovjavohir277-dot/verfy/actions/workflows/ci.yml)
+[![CI](https://github.com/verfy-dev/verfy/actions/workflows/ci.yml/badge.svg)](https://github.com/verfy-dev/verfy/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/verfy)](https://pypi.org/project/verfy/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -12,7 +12,7 @@
 
 **For teams using Claude Code, with Cursor in beta: if a tool your agent uses changes in secret, Verfy stops it and signs a receipt for every call it checks.**
 
-**Where to go:** bugs and questions in [issues](https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues); security reports privately, as [SECURITY.md](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/SECURITY.md) describes.
+**Where to go:** bugs and questions in [issues](https://github.com/verfy-dev/verfy-releases/issues); security reports privately, as [SECURITY.md](https://github.com/verfy-dev/verfy-releases/blob/main/SECURITY.md) describes.
 
 **The Verfy CLI is MIT and always will be. Verfy Cloud is a paid hosted service** (in beta, not on sale yet). This repository is the CLI; the hosted service is developed separately.
 
@@ -70,7 +70,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1                            
 ### As a Claude Code plugin
 
 ```bash
-claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
+claude plugin marketplace add verfy-dev/verfy-releases
 claude plugin install verfy@verfy
 ```
 

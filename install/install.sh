@@ -7,10 +7,10 @@
 # ~/.local/share/verfy) and VERFY_BIN_DIR (default ~/.local/bin) move it;
 # VERFY_NO_MODIFY_PATH=1 leaves your shell profile alone; VERFY_DOWNLOAD_BASE
 # replaces the release URL (a mirror, or a local test server).
-# Builds: https://github.com/anvarbekovjavohir277-dot/verfy-releases
+# Builds: https://github.com/verfy-dev/verfy-releases
 set -eu
 
-REPO="anvarbekovjavohir277-dot/verfy-releases"
+REPO="verfy-dev/verfy-releases"
 
 say() { printf 'verfy: %s\n' "$*"; }
 fail() { printf 'verfy: error: %s\n' "$*" >&2; exit 1; }

@@ -26,6 +26,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           path-to-signatures: signatures/cla.json
-          path-to-document: https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/CLA.md
+          path-to-document: https://github.com/verfy-dev/verfy/blob/main/CLA.md
           branch: cla-signatures
           allowlist: anvarbekovjavohir277-dot,dependabot[bot],github-actions[bot],*[bot]
