@@ -4,7 +4,7 @@ Thanks for helping. Verfy is a security tool, so the bar is: every rule is teste
 
 ## Found a way past Verfy?
 
-A command, path, URL or tool call that Verfy should deny or ask about but allows is a **bypass**, and we treat it as a vulnerability. Please report it privately through [GitHub's private vulnerability reporting](https://github.com/anvarbekovjavohir277-dot/verfy/security/advisories/new), not in a public issue. Include:
+A command, path, URL or tool call that Verfy should deny or ask about but allows is a **bypass**, and we treat it as a vulnerability. Please report it privately through [GitHub's private vulnerability reporting](https://github.com/verfy-dev/verfy/security/advisories/new), not in a public issue. Include:
 
 - the exact tool call or command (for Claude Code, the `tool_name` and `tool_input` it sends),
 - what `verfy check` answered (`verfy check "..."` or `verfy check --tool NAME --args JSON`) and what you expected,

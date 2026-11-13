@@ -4,7 +4,7 @@
 
 Please report security issues **privately**:
 
-Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/anvarbekovjavohir277-dot/verfy-releases/security/advisories/new)), or email security@verfy.dev if you cannot use GitHub. The same is in [security.txt](https://verfy.dev/.well-known/security.txt). Only the maintainers see the report. If you cannot use GitHub, write to security@verfy.dev.
+Use GitHub → this repository → **Security** → **Report a vulnerability** (private vulnerability reporting, [direct link](https://github.com/verfy-dev/verfy-releases/security/advisories/new)), or email security@verfy.dev if you cannot use GitHub. The same is in [security.txt](https://verfy.dev/.well-known/security.txt). Only the maintainers see the report. If you cannot use GitHub, write to security@verfy.dev.
 
 A way for an agent to get past Verfy (a command, path or tool call that should be denied or asked about but is allowed) counts as a vulnerability: report it privately the same way.
 
@@ -49,20 +49,20 @@ Files on PyPI carry a Sigstore attestation that names the repository that publis
 
 ```bash
 pip install pypi-attestations
-pypi-attestations verify pypi --repository https://github.com/anvarbekovjavohir277-dot/verfy pypi:verfy-VERSION-py3-none-any.whl
+pypi-attestations verify pypi --repository https://github.com/verfy-dev/verfy pypi:verfy-VERSION-py3-none-any.whl
 ```
 
 It prints `OK:` and the file name, and fails if another repository published the file.
 
-Each version also has a GitHub release in the [source repository](https://github.com/anvarbekovjavohir277-dot/verfy/releases) with the same files, each with a Sigstore bundle (`.sigstore.json`).
+Each version also has a GitHub release in the [source repository](https://github.com/verfy-dev/verfy/releases) with the same files, each with a Sigstore bundle (`.sigstore.json`).
 
-Standalone builds carry a build attestation: `gh attestation verify verfy-linux-x64.tar.gz -R anvarbekovjavohir277-dot/verfy-releases`. The install scripts run this themselves when a signed-in GitHub CLI is there. Without it they check only the SHA-256 list, which shows that the download is whole, not who built it, because the list comes from the same release.
+Standalone builds carry a build attestation: `gh attestation verify verfy-linux-x64.tar.gz -R verfy-dev/verfy-releases`. The install scripts run this themselves when a signed-in GitHub CLI is there. Without it they check only the SHA-256 list, which shows that the download is whole, not who built it, because the list comes from the same release.
 
 Without the GitHub CLI, use [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 3 or newer. From 0.16.1 the list of each standalone release is signed, so checking the signature and then the list shows that this repository's workflow built the download:
 
 ```bash
 cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
-  --certificate-identity https://github.com/anvarbekovjavohir277-dot/verfy-releases/.github/workflows/build.yml@refs/heads/main \
+  --certificate-identity https://github.com/verfy-dev/verfy-releases/.github/workflows/build.yml@refs/heads/main \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 sha256sum -c SHA256SUMS --ignore-missing
 ```

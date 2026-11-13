@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: anvarbekovjavohir277-dot/verfy-action@v1
+      - uses: verfy-dev/verfy-action@v1
         # with:
         #   config: .mcp.json          # the MCP config whose servers are checked
         #   require-pinned: "true"     # also fail a server started as pkg@latest

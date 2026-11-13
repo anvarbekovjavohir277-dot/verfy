@@ -34,4 +34,4 @@ The extension changes no file itself and makes no network call. Every change goe
 
 The hooks for Cursor, Codex, Gemini CLI, Copilot and Windsurf are beta. They follow each agent's documentation and have not yet run inside every agent. A remote MCP server that signs in with OAuth is left as it is. Verfy's rules are pattern matching: a seat belt, not a wall.
 
-[Docs](https://verfy.dev/docs) · [Security model](https://verfy.dev/security) · [Source](https://github.com/anvarbekovjavohir277-dot/verfy)
+[Docs](https://verfy.dev/docs) · [Security model](https://verfy.dev/security) · [Source](https://github.com/verfy-dev/verfy)

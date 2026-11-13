@@ -6,10 +6,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "verfy-pre-commit"
-version = "0.23.0"
+version = "0.23.1"
 description = "Installs the Verfy CLI for the pre-commit hooks of this repository"
 requires-python = ">=3.10"
-dependencies = ["verfy==0.23.0"]
+dependencies = ["verfy==0.23.1"]
 
 [tool.setuptools]
 packages = []

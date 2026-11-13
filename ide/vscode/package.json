@@ -2,17 +2,17 @@
   "name": "verfy",
   "displayName": "Verfy",
   "description": "Guard the AI agents in your editor: Verfy checks each tool call, locks MCP tools, signs a receipt for every call it checks, and can open the terminal inside a sandbox.",
-  "version": "0.23.0",
+  "version": "0.23.1",
   "publisher": "verfy",
   "license": "MIT",
   "icon": "icon.png",
   "homepage": "https://verfy.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anvarbekovjavohir277-dot/verfy"
+    "url": "https://github.com/verfy-dev/verfy"
   },
   "bugs": {
-    "url": "https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues"
+    "url": "https://github.com/verfy-dev/verfy-releases/issues"
   },
   "engines": {
     "vscode": "^1.85.0"

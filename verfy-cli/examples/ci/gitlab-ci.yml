@@ -11,7 +11,7 @@
 verfy-lock:
   image: node:22-bookworm
   variables:
-    VERFY_VERSION: "0.23.0"
+    VERFY_VERSION: "0.23.1"
   before_script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv > /dev/null
     - python3 -m venv /opt/verfy

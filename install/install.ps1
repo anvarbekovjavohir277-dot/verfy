@@ -6,12 +6,12 @@
 # $env:VERFY_INSTALL_DIR to move it (default %LOCALAPPDATA%\Programs\verfy) and
 # $env:VERFY_NO_MODIFY_PATH = "1" to leave your user PATH alone; $env:VERFY_DOWNLOAD_BASE
 # replaces the release URL (a mirror, or a local test server).
-# Builds: https://github.com/anvarbekovjavohir277-dot/verfy-releases
+# Builds: https://github.com/verfy-dev/verfy-releases
 
 & {
   $ErrorActionPreference = "Stop"
   $ProgressPreference = "SilentlyContinue"
-  $repo = "anvarbekovjavohir277-dot/verfy-releases"
+  $repo = "verfy-dev/verfy-releases"
 
   if (-not [Environment]::Is64BitOperatingSystem) {
     Write-Host "verfy: error: there is no standalone build for 32-bit Windows; use: pip install verfy" -ForegroundColor Red

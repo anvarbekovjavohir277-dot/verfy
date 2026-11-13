@@ -8,7 +8,7 @@ curl -fsSLO https://verfy.dev/install.sh && less install.sh && sh install.sh   #
 pip install "verfy[fast]"          # optional: faster Ed25519 via `cryptography`
 ```
 
-![verfy posture, verfy setup and verfy doctor on a computer with Claude Code, Cursor, Codex CLI and Gemini CLI](https://raw.githubusercontent.com/anvarbekovjavohir277-dot/verfy/main/docs/assets/verfy-setup.gif)
+![verfy posture, verfy setup and verfy doctor on a computer with Claude Code, Cursor, Codex CLI and Gemini CLI](https://raw.githubusercontent.com/verfy-dev/verfy/main/docs/assets/verfy-setup.gif)
 
 Real output of Verfy 0.20.0 on a demo home folder.
 
@@ -19,11 +19,11 @@ verfy posture            # risky settings in the coding agents on this computer;
 verfy demo               # watch the gateway stop a poisoned tool and risky calls; installs nothing
 ```
 
-Then fail a pull request when an MCP tool changes: copy [examples/ci/verfy.yml](https://github.com/anvarbekovjavohir277-dot/verfy/blob/main/verfy-cli/examples/ci/verfy.yml) to `.github/workflows/verfy.yml`. It runs the [Verfy GitHub Action](https://github.com/anvarbekovjavohir277-dot/verfy-action):
+Then fail a pull request when an MCP tool changes: copy [examples/ci/verfy.yml](https://github.com/verfy-dev/verfy/blob/main/verfy-cli/examples/ci/verfy.yml) to `.github/workflows/verfy.yml`. It runs the [Verfy GitHub Action](https://github.com/verfy-dev/verfy-action):
 
 ```yaml
 - uses: actions/checkout@v7
-- uses: anvarbekovjavohir277-dot/verfy-action@v1
+- uses: verfy-dev/verfy-action@v1
 ```
 
 ## Set up every agent at once
@@ -84,13 +84,13 @@ One HTML file with no script and nothing loaded from outside. It holds no secret
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/anvarbekovjavohir277-dot/verfy
-    rev: cli-v0.23.0
+  - repo: https://github.com/verfy-dev/verfy
+    rev: cli-v0.23.1
     hooks:
       - id: verfy-mcp-config     # static check of the MCP configs in the commit; starts nothing
 ```
 
-For GitLab, copy [`examples/ci/gitlab-ci.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/gitlab-ci.yml) into `.gitlab-ci.yml`.
+For GitLab, copy [`examples/ci/gitlab-ci.yml`](https://github.com/verfy-dev/verfy-releases/blob/main/examples/ci/gitlab-ci.yml) into `.gitlab-ci.yml`.
 
 ### Secrets in prompts
 
@@ -98,7 +98,7 @@ A prompt that contains an API key, token or private key is stopped before it is 
 
 ## In VS Code, Cursor and Windsurf (beta)
 
-Download `verfy-vscode.vsix` from the [latest release](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases/latest) and install it in the editor: Extensions > ... > Install from VSIX. The extension does the same as the commands here:
+Download `verfy-vscode.vsix` from the [latest release](https://github.com/verfy-dev/verfy-releases/releases/latest) and install it in the editor: Extensions > ... > Install from VSIX. The extension does the same as the commands here:
 - it installs the CLI if it is missing, in a terminal you can see;
 - it shows what `verfy setup` would change and runs it after you agree;
 - it shows in the status bar whether the agents are guarded.
@@ -123,7 +123,7 @@ verfy doctor                    # is the hook still there? key, receipts, verfy.
 Or install the Claude Code plugin, which adds the same hook to every session (use one or the other, not both):
 
 ```bash
-claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases
+claude plugin marketplace add verfy-dev/verfy-releases
 claude plugin install verfy@verfy
 ```
 
@@ -250,7 +250,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.23.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.23.1" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:
@@ -406,4 +406,4 @@ cd verfy-cli && python -m unittest discover -s tests     # needs Node for the cr
 
 Rules are pattern matching, not a sandbox; for isolation, use `verfy run --sandbox`. Verfy sees only calls that pass through its hook or gateway. A receipt proves what Verfy decided and that the log was not edited, not what a tool did internally. Keep `~/.verfy/key.json` private.
 
-<!-- mcp-name: io.github.anvarbekovjavohir277-dot/verfy -->
+<!-- mcp-name: io.github.verfy-dev/verfy -->

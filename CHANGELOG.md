@@ -1,6 +1,11 @@
 # Changelog
 
-What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
+What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/verfy-dev/verfy-releases/releases).
+
+## 0.23.1 (2026-11-13)
+
+- **Verfy moved to the [verfy-dev](https://github.com/verfy-dev) organization on GitHub.** The repositories are now `verfy-dev/verfy`, `verfy-dev/verfy-releases` and `verfy-dev/verfy-action`; the old addresses redirect. Every link, the install scripts, the release checks (build attestations and Sigstore identities), the Homebrew tap (`brew tap verfy-dev/verfy https://github.com/verfy-dev/verfy-releases`), the Scoop bucket, the pre-commit `repo:`, the Claude Code plugin marketplace (`claude plugin marketplace add verfy-dev/verfy-releases`) and the GitHub Action (`verfy-dev/verfy-action@v1`; the old name keeps working) use the new name. The container image is now `ghcr.io/verfy-dev/verfy`, and the MCP Registry name `io.github.verfy-dev/verfy`.
+- This release is built and signed from the new repositories, so `gh attestation verify ... -R verfy-dev/verfy-releases` and the install scripts check it under the new name.
 
 ## 0.23.0 (2026-11-13)
 
@@ -14,12 +19,12 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
   It changes nothing, starts no server and makes no network call. Its answers are advice to the agent; the hook and the gateway are what stop a call. Its own tool definitions pass Verfy's scanner.
 - **`verfy report` writes one HTML page about this computer:** which agents are guarded, risky agent settings, how MCP servers are started, what is locked, and the receipts (counts by verdict, the rules that fired most, receipts per day, the latest ones, and whether the chain verifies). It is a single file with no script and nothing loaded from outside, and it holds no secret. `--json` prints the same data.
 - **pre-commit hooks.** In `.pre-commit-config.yaml`, add this repository at `rev: cli-v0.23.0` with `verfy-mcp-config` (a static check of the MCP configs in the commit: a package with no pinned version, `curl | sh`, plain http, a key in the file; it starts nothing) and, if you want it, `verfy-lock` (runs `verfy lock check`, which starts the servers).
-- **A GitLab CI job,** [`examples/ci/gitlab-ci.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/gitlab-ci.yml): the same lock check as the GitHub Action, for merge requests. It is run in its container image by this repository's CI, not yet on GitLab itself.
+- **A GitLab CI job,** [`examples/ci/gitlab-ci.yml`](https://github.com/verfy-dev/verfy-releases/blob/main/examples/ci/gitlab-ci.yml): the same lock check as the GitHub Action, for merge requests. It is run in its container image by this repository's CI, not yet on GitLab itself.
 - **The research covers 99 MCP servers,** up from 46: every added server has at least 2,000 downloads a week on npm or PyPI.
 - The JavaScript engine has `packageOf`: the package a server is started from, also behind a gateway. [verfy.dev/check](https://verfy.dev/check) uses it to show how often that server changed its tools.
 - `verfy posture --json` says for each finding whether `--fix` can fix it (`fixable`).
-- **In the MCP Registry:** `server.json` describes `verfy mcp` for the official registry (`io.github.anvarbekovjavohir277-dot/verfy`, the PyPI package started with `mcp`), and the PyPI description carries the ownership line it checks.
-- **Homebrew, Scoop and a container image.** verfy-releases is also a Homebrew tap and a Scoop bucket, refreshed by each release build with that release's files and checksums, and each release publishes `ghcr.io/anvarbekovjavohir277-dot/verfy` with Node.js and uv for CI. A workflow installs all three on clean machines.
+- **In the MCP Registry:** `server.json` describes `verfy mcp` for the official registry (`io.github.verfy-dev/verfy`, the PyPI package started with `mcp`), and the PyPI description carries the ownership line it checks.
+- **Homebrew, Scoop and a container image.** verfy-releases is also a Homebrew tap and a Scoop bucket, refreshed by each release build with that release's files and checksums, and each release publishes `ghcr.io/verfy-dev/verfy` with Node.js and uv for CI. A workflow installs all three on clean machines.
 
 ## 0.22.0 (2026-11-13)
 
@@ -48,7 +53,7 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 ## 0.20.0 (2026-11-11)
 
-- **Start in a minute.** `verfy posture` shows what is risky in your agents before you change anything. A ready workflow, [`examples/ci/verfy.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/verfy.yml), fails a pull request when an MCP tool changes; copy it to `.github/workflows/`. The [Verfy GitHub Action](https://github.com/anvarbekovjavohir277-dot/verfy-action) now installs 0.20.0 and has the `require-pinned` and `sarif` inputs that 0.19.0 announced but the published action did not have yet.
+- **Start in a minute.** `verfy posture` shows what is risky in your agents before you change anything. A ready workflow, [`examples/ci/verfy.yml`](https://github.com/verfy-dev/verfy-releases/blob/main/examples/ci/verfy.yml), fails a pull request when an MCP tool changes; copy it to `.github/workflows/`. The [Verfy GitHub Action](https://github.com/verfy-dev/verfy-action) now installs 0.20.0 and has the `require-pinned` and `sarif` inputs that 0.19.0 announced but the published action did not have yet.
 - **Machine-wide hooks: `verfy setup --system --write`** (run as administrator, or with sudo). It puts the Claude Code and Cursor hooks in the files an administrator deploys for the whole computer: `managed-settings.d/50-verfy.json` next to Claude Code's managed settings, and Cursor's enterprise `hooks.json`. An agent runs as you and cannot change those files, so even a script the agent writes and runs can no longer take Verfy's hook out. That was a known limit until now. Claude Code does not let user or project settings override a managed value. Verfy's own user-level hook is then taken out, so no call is checked twice; a backup of each file is kept. Verfy writes a drop-in file of its own, so an organisation's `managed-settings.json` is left as it is. Changes to these files are denied to the agent too.
 - **Secrets in prompts are stopped before they are sent.** In Claude Code, Codex (UserPromptSubmit) and Cursor (beforeSubmitPrompt), a prompt that contains what looks like an API key, token or private key is blocked with the rule and a short reason, and gets a signed receipt (VFY-PROMPT-001). The secret itself is not shown or stored. Turn it off with `"prompt_secrets": "off"` in your policy.
 - **Cursor: file writes, deletes and every other tool are checked.** Cursor's preToolUse hook now goes to Verfy too. File edits, which were the main gap in Cursor, get the same rules as Claude Code: for example, writing to `~/.bashrc` or deleting a hook file is denied. Terminal commands, file reads and MCP calls stay with their own hooks, so nothing is checked twice. MCP results are also cleaned of keys and tokens before the agent reads them (postToolUse), including those from remote servers that sign in with OAuth and so cannot go behind the gateway. `verfy setup --write` adds the new hooks to an existing install.
@@ -83,11 +88,11 @@ What changed in the Verfy CLI (`pip install verfy`) and the website. Newest firs
 
 - **`verfy doctor` checks this machine's setup and changes nothing.** It shows the signing key, how many receipts the ledger holds and when the last one was written, whether the Claude Code and Cursor hooks are in place, and how many tools `verfy.lock` pins. It exits 1 when Claude Code is installed without the Verfy hook or a settings file is not valid JSON, so a removed hook can be caught by a script. A removed hook still cannot report itself; with Verfy Cloud, a device that stops sending receipts shows in Dashboard > Devices.
 - **`verfy proxy --url` starts its bridge with this same Verfy.** It used to run the first `verfy` found on PATH, which could be another version or another program. It now uses the standalone build itself or the Python that runs the proxy.
-- The package lists its author, and issues go to [verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases/issues) everywhere.
+- The package lists its author, and issues go to [verfy-releases](https://github.com/verfy-dev/verfy-releases/issues) everywhere.
 
 ## 0.17.0 (2026-11-06)
 
-A second internal attack test found these. The [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) has the numbers, including what a fresh list still got through. It was not an independent test.
+A second internal attack test found these. The [report](https://github.com/verfy-dev/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) has the numbers, including what a fresh list still got through. It was not an independent test.
 
 - **A `verfy.policy.json` that came with a repository can no longer switch Verfy off.** It used to replace your policy and your team's, so a cloned repo could disable every rule. Now it can only make Verfy stricter: anything that would loosen it is left out, and `verfy check` says so. If the file is yours, read it and run `verfy policy trust`; if it changes, you trust it again. `verfy policy use --project` trusts what it writes. A team policy is never loosened by a file in a folder. **If you rely on a project policy that loosens something, run `verfy policy trust` after you upgrade.**
 - **Rules that guard Verfy itself cannot be disabled**, by any policy.
@@ -113,7 +118,7 @@ A second internal attack test found these. The [report](https://github.com/anvar
 
 ## 0.16.0 (2026-11-05)
 
-An internal attack test found these, and the [report](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) lists them all. It was not an independent test.
+An internal attack test found these, and the [report](https://github.com/verfy-dev/verfy-releases/blob/main/docs/SECURITY_TEST_2026-11.md) lists them all. It was not an independent test.
 
 - **`$HOME` no longer walks around a path check.** `cat $HOME/.ssh/id_rsa` was allowed while `cat ~/.ssh/id_rsa` was stopped.
 - **The cloud metadata address is caught however it is written:** as a decimal, in hex or octal, or inside IPv6.
@@ -183,14 +188,14 @@ An internal attack test found these, and the [report](https://github.com/anvarbe
 - **Remote MCP servers.** `verfy lock check` and `verfy scan --live` now read the tools of remote servers (a `url` in the config) over Streamable HTTP instead of skipping them, so a CI check covers hosted servers too. Headers come from the config: `headers` (Claude Code, Cursor, VS Code and others) or Codex CLI's `http_headers`, `env_http_headers` and `bearer_token_env_var`, with `${VAR}` and `${VAR:-default}` filled in from the environment, so a key can come from a CI secret. A missing variable fails the check and names the variable, never a value. Verfy does not follow redirects, so a key only goes to the address in the config. Servers that only speak the older SSE transport are reported, not supported yet. The MCP gateway still runs in front of stdio servers only.
 - Tested with a local fake server (sessions, server-sent events, pages of tools, a refused key, a redirect, a missing variable) and by hand against two public remote servers, DeepWiki and Context7.
 - Fixed: inside GitHub Actions, `verfy lock check --json` printed annotations after the JSON, so the output did not parse. With `--json` there are no annotations now; the step summary is still written.
-- The GitHub Action works again now that the source repository is public: `uses: anvarbekovjavohir277-dot/verfy@cli-v0.7.0`. It checks remote servers too.
+- The GitHub Action works again now that the source repository is public: `uses: verfy-dev/verfy@cli-v0.7.0`. It checks remote servers too.
 
 ## 0.6.3 (2026-10-26)
 
 - **Security: the agent can no longer read Verfy's signing key or device token.** Up to 0.6.2 an agent could read `~/.verfy/key.json` (for example with `cat` or Claude Code's Read tool), and with it sign receipts of its own, or read the device token in `~/.verfy/team.json`. Now reading either file, listing, searching or copying `~/.verfy`, or naming the folder and one of those files in one command is denied (VFY-SELF-006), including `$HOME`, `%USERPROFILE%`, quoted, globbed and `cd`-then-read forms; archiving, copying or searching a folder that holds it, such as the home folder, or looking for files with those names needs approval (VFY-SELF-007). Both engines (Python and JavaScript) share the 26 new test cases. A program the agent writes and runs can still read the file: see [SECURITY_LIMITATIONS.md](docs/SECURITY_LIMITATIONS.md). If an agent may have read your key, create a new one yourself with `verfy init --force` (it starts a new receipt chain) and, with Verfy Cloud, revoke the device and enroll it again. Found while reviewing a contribution.
 - The end-to-end test also checks that the hook denies reading the signing key with `cat` and with the Read tool.
 - Website (27 October): Verfy Advisories have `VERFY-YYYY-NNNN` ids. The old ids (such as ATLS-2025-0001) stay in `aliases`, and links to them lead to the new pages.
-- **[verfy-releases](https://github.com/anvarbekovjavohir277-dot/verfy-releases) is the home for installing Verfy**: the standalone builds, the Claude Code plugin (`claude plugin marketplace add anvarbekovjavohir277-dot/verfy-releases`, then `claude plugin install verfy@verfy`), the security policy (report vulnerabilities and bypasses there), the advisories, the research and this changelog. The source is in [anvarbekovjavohir277-dot/verfy](https://github.com/anvarbekovjavohir277-dot/verfy), under the MIT license. The GitHub Action is replaced by two steps, `pip install "verfy==0.6.3"` and `verfy lock check`, with the same annotations and step summary.
+- **[verfy-releases](https://github.com/verfy-dev/verfy-releases) is the home for installing Verfy**: the standalone builds, the Claude Code plugin (`claude plugin marketplace add verfy-dev/verfy-releases`, then `claude plugin install verfy@verfy`), the security policy (report vulnerabilities and bypasses there), the advisories, the research and this changelog. The source is in [verfy-dev/verfy](https://github.com/verfy-dev/verfy), under the MIT license. The GitHub Action is replaced by two steps, `pip install "verfy==0.6.3"` and `verfy lock check`, with the same annotations and step summary.
 
 ## 0.6.2 (2026-10-26)
 
@@ -207,7 +212,7 @@ An internal attack test found these, and the [report](https://github.com/anvarbe
 
 - **Lock explains what changed.** `verfy lock check`, `lock diff`, `lock approve` and `lock check --update` now say in words what changed in a tool and how risky it looks (low, medium or high): a new sentence that orders the model to send data somewhere, a new link, a new or newly required parameter, a new hidden-instruction pattern, or only a rewording. The GitHub annotations and step summary carry the same explanation. It is deterministic; no model is involved. On the 342 real tool changes from our October research it rated none high.
 - **Lock the files an agent loads, not only MCP tools.** `verfy lock files` pins CLAUDE.md, AGENTS.md, GEMINI.md, Cursor and Windsurf rules, `.claude` skills, agents, commands and hook settings, and MCP configs in the `files` section of `verfy.lock`; `verfy lock check` then fails CI when one changes without a reviewed lock update. `verfy lock files --user` does the same for user-level instructions, skills and installed Claude Code plugins on your machine (`~/.verfy/agent-files.lock`).
-- **Claude Code plugin.** This repository is now a plugin marketplace: `claude plugin marketplace add anvarbekovjavohir277-dot/verfy` and `claude plugin install verfy@verfy` install the guard hook and a skill for checking locks. It needs the CLI (`pip install verfy`).
+- **Claude Code plugin.** This repository is now a plugin marketplace: `claude plugin marketplace add verfy-dev/verfy` and `claude plugin install verfy@verfy` install the guard hook and a skill for checking locks. It needs the CLI (`pip install verfy`).
 - **More agents.** `verfy scan --discover` also reads Codex CLI (`~/.codex/config.toml`, Python 3.11+), Gemini CLI (`.gemini/settings.json`), VS Code (`.vscode/mcp.json` and the user `mcp.json`) and Windsurf (`~/.codeium/windsurf/mcp_config.json`).
 - **Import other scanners' findings.** `verfy import FILE` reads Snyk Agent Scan (`--json`) and Cisco MCP Scanner (`--format raw`) output. With `--save`, the Verfy gateway hides the tools they rate high and denies calls to them (VFY-IMP-001).
 - Self-protection: an agent may not run `verfy lock files --update` or `verfy import --save`, or edit `~/.verfy/agent-files.lock`, `~/.verfy/imported/` or the installed Verfy plugin.
@@ -216,8 +221,8 @@ An internal attack test found these, and the [report](https://github.com/anvarbe
 
 - The hosted service has one name, Verfy Cloud: `verfy team` and `verfy sync` say so in their help. The commands are unchanged.
 - This repository is now the MIT CLI only; the website and the dashboard are developed separately as Verfy Cloud. The CLI is MIT and will stay MIT.
-- Verfy Advisories are open data in [`advisories/`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/tree/main/advisories): anyone can add a public, sourced advisory by pull request, checked by `node advisories/validate.mjs`.
-- Contributors sign the [CLA](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/CLA.md) once, by commenting on their first pull request.
+- Verfy Advisories are open data in [`advisories/`](https://github.com/verfy-dev/verfy-releases/tree/main/advisories): anyone can add a public, sourced advisory by pull request, checked by `node advisories/validate.mjs`.
+- Contributors sign the [CLA](https://github.com/verfy-dev/verfy-releases/blob/main/CLA.md) once, by commenting on their first pull request.
 - There is no 0.5.4: that tag was never published, because the package metadata still said 0.5.3 and PyPI refused it. A test and the release workflow now check that both version numbers match.
 
 ## 0.5.3 (2026-10-24)
@@ -228,7 +233,7 @@ An internal attack test found these, and the [report](https://github.com/anvarbe
 
 ## 0.5.2 (2026-10-24)
 
-Scanner fixes, found by scanning the newest releases of 34 popular MCP servers ([the research](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/docs/research/2026-10-mcp-tool-changes.md)). Version 0.5.1 raised 163 high or critical findings there, all false alarms; 0.5.2 raises none.
+Scanner fixes, found by scanning the newest releases of 34 popular MCP servers ([the research](https://github.com/verfy-dev/verfy-releases/blob/main/docs/research/2026-10-mcp-tool-changes.md)). Version 0.5.1 raised 163 high or critical findings there, all false alarms; 0.5.2 raises none.
 
 - A tool that mentions another tool on the same server is no longer flagged as tool shadowing.
 - A match right after a negation ("Do not include API keys") is skipped. Before, this hid tools from Context7, Apify and Sentry behind the gateway.
