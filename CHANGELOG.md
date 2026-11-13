@@ -2,6 +2,23 @@
 
 What changed in the Verfy CLI (`pip install verfy`) and the website. Newest first. Every CLI version is on [PyPI](https://pypi.org/project/verfy/#history) and as standalone builds on the [releases page](https://github.com/anvarbekovjavohir277-dot/verfy-releases/releases).
 
+## 0.23.0 (2026-11-13)
+
+- **`verfy mcp`: Verfy as an MCP server.** Add it to any agent (`{"command": "verfy", "args": ["mcp"]}`) and the agent can ask Verfy before it acts. Six read-only tools:
+  - `check_line` and `check_tool_call`: would Verfy's rules allow, ask about or deny this terminal line or this tool call, and which rule decides;
+  - `scan_mcp_config`: how the MCP servers in a config are started (the VFY-CFG rules), for a config you give or the ones on this computer;
+  - `scan_tools`: warning signs in tool definitions, with a grade;
+  - `agent_settings`: what `verfy posture` reports;
+  - `recent_receipts`: the latest signed receipts and whether the chain verifies.
+
+  It changes nothing, starts no server and makes no network call. Its answers are advice to the agent; the hook and the gateway are what stop a call. Its own tool definitions pass Verfy's scanner.
+- **`verfy report` writes one HTML page about this computer:** which agents are guarded, risky agent settings, how MCP servers are started, what is locked, and the receipts (counts by verdict, the rules that fired most, receipts per day, the latest ones, and whether the chain verifies). It is a single file with no script and nothing loaded from outside, and it holds no secret. `--json` prints the same data.
+- **pre-commit hooks.** In `.pre-commit-config.yaml`, add this repository at `rev: cli-v0.23.0` with `verfy-mcp-config` (a static check of the MCP configs in the commit: a package with no pinned version, `curl | sh`, plain http, a key in the file; it starts nothing) and, if you want it, `verfy-lock` (runs `verfy lock check`, which starts the servers).
+- **A GitLab CI job,** [`examples/ci/gitlab-ci.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/gitlab-ci.yml): the same lock check as the GitHub Action, for merge requests. It is run in its container image by this repository's CI, not yet on GitLab itself.
+- **The research covers 99 MCP servers,** up from 46: every added server has at least 2,000 downloads a week on npm or PyPI.
+- The JavaScript engine has `packageOf`: the package a server is started from, also behind a gateway. [verfy.dev/check](https://verfy.dev/check) uses it to show how often that server changed its tools.
+- `verfy posture --json` says for each finding whether `--fix` can fix it (`fixable`).
+
 ## 0.22.0 (2026-11-13)
 
 - **`verfy posture` says when an agent's own sandbox is off, and `--fix` turns it on.** Verfy checks the command that starts a script the agent wrote, not what the script then does; the operating system sandbox each agent has holds that. Now:

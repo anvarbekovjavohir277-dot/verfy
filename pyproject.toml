@@ -1,0 +1,16 @@
+# Only for pre-commit (https://pre-commit.com), which installs this repository to get the `verfy` command for the
+# hooks in .pre-commit-hooks.yaml. The CLI itself is in verfy-cli/ and comes from PyPI: `pip install verfy`.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verfy-pre-commit"
+version = "0.23.0"
+description = "Installs the Verfy CLI for the pre-commit hooks of this repository"
+requires-python = ">=3.10"
+dependencies = ["verfy==0.23.0"]
+
+[tool.setuptools]
+packages = []
+py-modules = []

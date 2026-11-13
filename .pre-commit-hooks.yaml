@@ -1,0 +1,21 @@
+# Hooks for pre-commit (https://pre-commit.com). In your .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/anvarbekovjavohir277-dot/verfy
+#       rev: cli-v0.23.0
+#       hooks:
+#         - id: verfy-mcp-config
+#         - id: verfy-lock        # optional: starts the MCP servers
+- id: verfy-mcp-config
+  name: "Verfy: how MCP servers are started"
+  description: "Static check of the MCP configs in the commit: a package with no pinned version, curl | sh, plain http, a key in the file, a privileged container. Starts no server."
+  entry: python -m verfy.precommit
+  language: python
+  files: '(^|/)(\.mcp\.json|\.cursor/mcp\.json|\.vscode/mcp\.json|\.gemini/settings\.json|\.codex/config\.toml|mcp_config\.json)$'
+- id: verfy-lock
+  name: "Verfy: MCP tools match verfy.lock"
+  description: "Runs `verfy lock check`: starts the servers in .mcp.json, reads their tools and fails when one differs from verfy.lock. Needs the network and the servers' runtimes (npx, uvx)."
+  entry: verfy lock check
+  language: python
+  pass_filenames: false
+  files: '(^|/)(\.mcp\.json|verfy\.lock)$'

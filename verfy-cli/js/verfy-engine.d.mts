@@ -77,6 +77,8 @@ export interface Engine {
   /** How one MCP server is launched, checked without starting it (the CLI's `verfy scan` config rules, VFY-CFG-001..007). */
   checkServer(name: string, spec: Record<string, unknown>, local?: string[] | null): ScanFinding[];
   configServers(data: unknown): Record<string, Record<string, unknown>>;
+  /** The package a stdio server is started from (npx, uvx, ...), also behind a Verfy gateway; `name` is it without the version. */
+  packageOf(spec: Record<string, unknown>): { index: number; ecosystem: "npm" | "pypi"; package: string; name: string } | null;
   checkConfig(data: unknown, local?: string[] | null): ConfigReport;
 }
 

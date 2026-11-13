@@ -1607,6 +1607,30 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
       .map(function (x) { return x[0]; });
   }
 
+  /** Where a stdio server's package is in its config entry (discover.py: package_in): {index, ecosystem, package, name},
+   *  or null when it is not started through a package runner. Looks past a Verfy gateway in front of it. `name` is the
+   *  package without its version. */
+  function packageOf(spec) {
+    var args = (Array.isArray(spec.args) ? spec.args : []).map(function (a) { return a === null || a === undefined ? "None" : pyStr(a); });
+    var base = programName(String(spec.command || "")), start = 0;
+    while (base === "verfy" && args.indexOf("--", start) >= 0) {
+      start = args.indexOf("--", start) + 1;
+      if (start >= args.length) return null;
+      base = programName(args[start]);
+      start += 1;
+    }
+    if ((base === "pnpm" || base === "yarn") && args[start] === "dlx") { base = "npx"; start += 1; }
+    if (base === "uv" && args[start] === "tool" && args[start + 1] === "run") { base = "uvx"; start += 2; }
+    if (base === "pipx" && args[start] === "run") start += 1;
+    if (!Object.prototype.hasOwnProperty.call(RUNNERS, base)) return null;
+    var pkg = packageArg(args.slice(start));
+    if (!pkg || /^[.\/~]/.test(pkg)) return null;
+    var eco = RUNNERS[base], name;
+    if (eco === "npm") name = (pkg.charAt(0) === "@" ? "@" : "") + (pkg.charAt(0) === "@" ? pkg.slice(1) : pkg).split("@")[0];
+    else name = pkg.split(/[=<>~!@]/)[0];
+    return { index: args.indexOf(pkg, start), ecosystem: eco, package: pkg, name: name };
+  }
+
   /** The MCP servers a config object lists: `mcpServers` (most clients), `servers` (VS Code) or `mcp_servers` (Codex). */
   function configServers(data) {
     var out = {};
@@ -1635,7 +1659,7 @@ export function createEngine(PATTERNS, DEFAULT_POLICY) {
     loadPolicy: loadPolicy, check: check, classify: classify, parseShell: parseShell,
     scan: scan, toolPin: toolPin, unsafeTools: unsafeTools, grade: grade,
     scanSecrets: scanSecrets, redactValue: redactValue, paymentAmount: paymentAmount,
-    checkServer: checkServer, configServers: configServers, checkConfig: checkConfig,
+    checkServer: checkServer, configServers: configServers, checkConfig: checkConfig, packageOf: packageOf,
     ed25519: ed25519, b64u: b64u, unb64u: unb64u, keyId: keyId, generateKey: generateKey, keyFromSecret: keyFromSecret,
     signReceipt: signReceipt, verifyReceipt: verifyReceipt, buildReceipt: buildReceipt, verifyLedger: verifyLedger, parseLedger: parseLedger
   };

@@ -63,6 +63,35 @@ verfy posture --fix --write    # makes the edits; the old file is kept next to e
 
 It reads the settings of Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (VS Code and CLI) and Devin CLI, and says when an agent's own sandbox is off: Verfy checks the command that starts a script the agent wrote, not what the script then does, and the sandbox holds that. The fix turns on Claude Code's sandbox (not on native Windows, where it does not run: use WSL2), Gemini CLI's `security.toolSandboxing` and VS Code's `chat.agent.sandbox.enabled`. A fix sets or removes one key, or takes one entry out of a list: `bypassPermissions` becomes `default`, `disableAllHooks` is removed, `approval_policy = "never"` becomes `"on-request"`. `--min high` fixes only the high ones. A JSON file with comments is not rewritten (the comments would be lost), and Codex's `config.toml` is only written when the edited file says exactly what was meant; in both cases the finding is shown for you to change by hand.
 
+### Let the agent ask Verfy
+
+```json
+{"mcpServers": {"verfy": {"command": "verfy", "args": ["mcp"]}}}
+```
+
+`verfy mcp` is Verfy as an MCP server with six read-only tools: would a terminal line or a tool call be allowed, what is risky in an MCP config or in tool definitions, which agent settings are risky here, and the latest receipts. It changes nothing and starts nothing; the hook and the gateway still decide when the call is really made.
+
+### A report you can share
+
+```bash
+verfy report            # writes verfy-report.html: agents, risky settings, MCP servers, the lock, receipts
+```
+
+One HTML file with no script and nothing loaded from outside. It holds no secret: receipts store hashes of arguments.
+
+### pre-commit and GitLab
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/anvarbekovjavohir277-dot/verfy
+    rev: cli-v0.23.0
+    hooks:
+      - id: verfy-mcp-config     # static check of the MCP configs in the commit; starts nothing
+```
+
+For GitLab, copy [`examples/ci/gitlab-ci.yml`](https://github.com/anvarbekovjavohir277-dot/verfy-releases/blob/main/examples/ci/gitlab-ci.yml) into `.gitlab-ci.yml`.
+
 ### Secrets in prompts
 
 A prompt that contains an API key, token or private key is stopped before it is sent, in Claude Code, Codex and Cursor, with a signed receipt (VFY-PROMPT-001). `"prompt_secrets": "off"` in the policy turns this off.
@@ -221,7 +250,7 @@ Commit `verfy.lock`; a pull request that changes a tool then fails until someone
 ```yaml
 - uses: actions/setup-python@v7
   with: { python-version: "3.13" }
-- run: pip install "verfy==0.22.0" && verfy lock check --config .mcp.json --lock verfy.lock
+- run: pip install "verfy==0.23.0" && verfy lock check --config .mcp.json --lock verfy.lock
 ```
 
 `lock check` starts each stdio server command from the config, as your MCP client would: pin package versions and pass keys as CI secrets. Remote servers (a `url` in the config) are asked for their tools over Streamable HTTP with the config's `headers`. Write a key as `${MCP_TOKEN}` and set `MCP_TOKEN` from a CI secret:

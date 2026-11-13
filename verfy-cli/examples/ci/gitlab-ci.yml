@@ -1,0 +1,24 @@
+# Fail a merge request when an MCP tool your agents use changed since you locked it.
+# Copy this job into .gitlab-ci.yml in your repository (or `include` this file).
+#
+# First, on your machine, lock today's tools and commit the lock:
+#   pip install verfy
+#   verfy lock check --update        # shows each tool definition, then writes verfy.lock
+#   git add verfy.lock .mcp.json && git commit -m "Lock MCP tools"
+#
+# The image has Node.js for servers started with npx; the job adds Python for Verfy and uv for servers started
+# with uvx. Docs: https://verfy.dev/docs#ci
+verfy-lock:
+  image: node:22-bookworm
+  variables:
+    VERFY_VERSION: "0.23.0"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv > /dev/null
+    - python3 -m venv /opt/verfy
+    - /opt/verfy/bin/pip install --quiet --disable-pip-version-check "verfy==$VERFY_VERSION" uv
+    - export PATH="/opt/verfy/bin:$PATH"
+  script:
+    - verfy lock check --config .mcp.json --lock verfy.lock
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

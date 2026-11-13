@@ -158,6 +158,8 @@ class ConfigFixture(unittest.TestCase):
         for c in fx["cases"]:
             spec = json.loads(json.dumps(c["spec"]).replace(fx["token"], "ghp_" + "a" * 36))
             self.assertEqual(discover.check_server(c["name"], spec, set(c["local"])), c["expect"], c["name"])
+            found = discover.package_in(spec)
+            self.assertEqual(list(found) if found else None, [c["package"][k] for k in ("index", "ecosystem", "package")] if c["package"] else None, c["name"])
         self.assertNotIn("ghp_", (FX / "config.json").read_text("utf-8"))
 
 

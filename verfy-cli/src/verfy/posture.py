@@ -364,7 +364,7 @@ def summary(findings: list[dict]) -> str:
 
 
 def as_json(findings: list[dict]) -> Any:
-    return {"v": 1, "findings": [{k: v for k, v in f.items() if k != "edit"} for f in findings]}
+    return {"v": 1, "findings": [{**{k: v for k, v in f.items() if k != "edit"}, "fixable": bool(f.get("edit"))} for f in findings]}
 
 
 # ---------------------------------------------------------------- verfy posture --fix

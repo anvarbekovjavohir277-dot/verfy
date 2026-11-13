@@ -368,6 +368,9 @@ CONFIG_CASES = [
     ("gateway bridge with a bearer variable", {"command": "verfy", "args": ["proxy", "--name", "r", "--url", "https://mcp.example.com/mcp", "--bearer-env", "TOKEN", "--"]}),
     ("nothing in the entry", {}),
     ("args that are not text", {"command": "npx", "args": [1, True, None, "some-server"]}),
+    ("pipx run, pinned", {"command": "pipx", "args": ["run", "mcp-server-fetch==2026.11.11"]}),
+    ("uvx with extras and a range", {"command": "uvx", "args": ["mcp-server-git[extra]>=1.0"]}),
+    ("gateway with nothing behind it", {"command": "verfy", "args": ["proxy", "--name", "x", "--"]}),
 ]
 CONFIGS = [
     {"mcpServers": {"fs": {"command": "npx", "args": ["-y", FS]}, "api": {"url": "http://mcp.example.com/mcp"}, "bad": "not an object"}},
@@ -382,7 +385,13 @@ def config_fixture() -> dict:
     for name, spec, *rest in CONFIG_CASES:
         local = rest[0] if rest else []
         real = json.loads(json.dumps(spec).replace(TOKEN, "ghp_" + "a" * 36))
-        cases.append({"name": name, "spec": spec, "local": local, "expect": discover.check_server(name, real, set(local))})
+        found = discover.package_in(real)
+        package = None
+        if found:
+            index, eco, pkg = found
+            pinned = discover.pin_package(pkg, "0", eco)  # the name is what is left of it without the version
+            package = {"index": index, "ecosystem": eco, "package": pkg, "name": pinned[:-2] if eco == "npm" else pinned[:-3]}
+        cases.append({"name": name, "spec": spec, "local": local, "expect": discover.check_server(name, real, set(local)), "package": package})
     configs = []
     for data in CONFIGS:
         rep = discover.scan_configs([{"source": "given", "path": "", "servers": discover.servers_in(data)}])

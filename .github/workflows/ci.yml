@@ -97,3 +97,25 @@ jobs:
             echo "expected the changed tool to fail the check" >&2
             exit 1
           fi
+
+  gitlab-template:
+    name: GitLab job in its image
+    runs-on: ubuntu-latest
+    container: node:22-bookworm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # the before_script and script of verfy-cli/examples/ci/gitlab-ci.yml, with this checkout's CLI in place of PyPI's
+      - name: before_script
+        run: |
+          grep -q 'apt-get install -y -qq --no-install-recommends python3-venv' verfy-cli/examples/ci/gitlab-ci.yml
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-venv > /dev/null
+          python3 -m venv /opt/verfy
+          /opt/verfy/bin/pip install --quiet --disable-pip-version-check ./verfy-cli uv
+      - name: script
+        working-directory: verfy-cli/examples/ci
+        run: |
+          export PATH="/opt/verfy/bin:$PATH"
+          grep -q 'verfy lock check --config .mcp.json --lock verfy.lock' gitlab-ci.yml
+          verfy lock check --config mcp.json --lock verfy.lock

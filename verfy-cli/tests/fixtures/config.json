@@ -25,7 +25,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "npm",
+    "package": "@modelcontextprotocol/server-filesystem",
+    "name": "@modelcontextprotocol/server-filesystem"
+   }
   },
   {
    "name": "npx, pinned",
@@ -45,7 +51,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "npm",
+    "package": "@modelcontextprotocol/server-filesystem@1.2.3",
+    "name": "@modelcontextprotocol/server-filesystem"
+   }
   },
   {
    "name": "npx @latest",
@@ -69,7 +81,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "npm",
+    "package": "@modelcontextprotocol/server-filesystem@latest",
+    "name": "@modelcontextprotocol/server-filesystem"
+   }
   },
   {
    "name": "npx by full path",
@@ -93,7 +111,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "npm",
+    "package": "some-server",
+    "name": "some-server"
+   }
   },
   {
    "name": "npx --package",
@@ -113,7 +137,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "npm",
+    "package": "tool@2.0.0",
+    "name": "tool"
+   }
   },
   {
    "name": "npx, a local path",
@@ -131,7 +161,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "npx, package the project lists",
@@ -151,7 +182,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "npm",
+    "package": "my-server",
+    "name": "my-server"
+   }
   },
   {
    "name": "bunx, no version",
@@ -175,7 +212,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "npm",
+    "package": "some-server",
+    "name": "some-server"
+   }
   },
   {
    "name": "uvx, no version",
@@ -199,7 +242,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "pypi",
+    "package": "mcp-server-git",
+    "name": "mcp-server-git"
+   }
   },
   {
    "name": "uvx, pinned",
@@ -217,7 +266,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "pypi",
+    "package": "mcp-server-git==1.0.0",
+    "name": "mcp-server-git"
+   }
   },
   {
    "name": "uvx --from",
@@ -243,7 +298,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "pypi",
+    "package": "git-mcp",
+    "name": "git-mcp"
+   }
   },
   {
    "name": "pnpm dlx",
@@ -268,7 +329,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "npm",
+    "package": "some-server",
+    "name": "some-server"
+   }
   },
   {
    "name": "yarn dlx, pinned",
@@ -287,7 +354,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "npm",
+    "package": "some-server@3.1.0",
+    "name": "some-server"
+   }
   },
   {
    "name": "uv tool run",
@@ -313,7 +386,13 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 2,
+    "ecosystem": "pypi",
+    "package": "mcp-server-time",
+    "name": "mcp-server-time"
+   }
   },
   {
    "name": "node script",
@@ -331,7 +410,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "cmd /c npx",
@@ -358,7 +438,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "sh -c npx with quotes",
@@ -383,7 +464,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "bash -c with an open quote",
@@ -402,7 +484,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "sh -c with two commands",
@@ -421,7 +504,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "curl piped to a shell",
@@ -446,7 +530,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "wget piped to sudo sh",
@@ -471,7 +556,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "powershell iex",
@@ -496,7 +582,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker, plain",
@@ -517,7 +604,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker --privileged",
@@ -543,7 +631,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker --network host",
@@ -570,7 +659,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker --network=host",
@@ -596,7 +686,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker mounts the disk, twice",
@@ -625,7 +716,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "docker mounts home folders",
@@ -660,7 +752,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "podman mounts a project folder",
@@ -681,7 +774,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote over http",
@@ -708,7 +802,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote over https, no credentials",
@@ -730,7 +825,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote with a header from the environment",
@@ -748,7 +844,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote, lower-case header name",
@@ -766,7 +863,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote with oauth",
@@ -784,7 +882,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "remote with empty oauth",
@@ -806,7 +905,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "localhost over http",
@@ -821,7 +921,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "ipv6 localhost",
@@ -836,7 +937,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "serverUrl (Windsurf)",
@@ -863,7 +965,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "httpUrl (Gemini)",
@@ -884,7 +987,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "upper-case scheme and user info",
@@ -911,7 +1015,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "token in env",
@@ -939,7 +1044,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "token in a header",
@@ -963,7 +1069,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "token in the url",
@@ -990,7 +1097,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "token in args, twice",
@@ -1017,7 +1125,8 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "behind the gateway, no version",
@@ -1041,7 +1150,13 @@
      "message": "`npx @modelcontextprotocol/server-filesystem` uses a copy the project installed if there is one, otherwise it downloads whatever version is newest at launch; pin a version.",
      "where": "args"
     }
-   ]
+   ],
+   "package": {
+    "index": 6,
+    "ecosystem": "npm",
+    "package": "@modelcontextprotocol/server-filesystem",
+    "name": "@modelcontextprotocol/server-filesystem"
+   }
   },
   {
    "name": "behind the gateway, pinned",
@@ -1059,7 +1174,8 @@
     ]
    },
    "local": [],
-   "expect": []
+   "expect": [],
+   "package": null
   },
   {
    "name": "sandbox and gateway",
@@ -1086,7 +1202,13 @@
      "message": "`uvx mcp-server-git` downloads whatever version is newest at launch; pin a version.",
      "where": "args"
     }
-   ]
+   ],
+   "package": {
+    "index": 9,
+    "ecosystem": "pypi",
+    "package": "mcp-server-git",
+    "name": "mcp-server-git"
+   }
   },
   {
    "name": "gateway in front of a remote server",
@@ -1114,7 +1236,8 @@
      "message": "No credentials in the config: your client signs in with OAuth if the server asks; otherwise the server is open to anyone.",
      "where": "headers"
     }
-   ]
+   ],
+   "package": null
   },
   {
    "name": "gateway bridge with a bearer variable",
@@ -1132,13 +1255,15 @@
     ]
    },
    "local": [],
-   "expect": []
+   "expect": [],
+   "package": null
   },
   {
    "name": "nothing in the entry",
    "spec": {},
    "local": [],
-   "expect": []
+   "expect": [],
+   "package": null
   },
   {
    "name": "args that are not text",
@@ -1165,7 +1290,89 @@
      "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
      "where": "command"
     }
-   ]
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "npm",
+    "package": "1",
+    "name": "1"
+   }
+  },
+  {
+   "name": "pipx run, pinned",
+   "spec": {
+    "command": "pipx",
+    "args": [
+     "run",
+     "mcp-server-fetch==2026.11.11"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`pipx run` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ],
+   "package": {
+    "index": 1,
+    "ecosystem": "pypi",
+    "package": "mcp-server-fetch==2026.11.11",
+    "name": "mcp-server-fetch"
+   }
+  },
+  {
+   "name": "uvx with extras and a range",
+   "spec": {
+    "command": "uvx",
+    "args": [
+     "mcp-server-git[extra]>=1.0"
+    ]
+   },
+   "local": [],
+   "expect": [
+    {
+     "rule": "VFY-CFG-001",
+     "severity": "medium",
+     "message": "`uvx mcp-server-git[extra]>=1.0` downloads whatever version is newest at launch; pin a version.",
+     "where": "args"
+    },
+    {
+     "rule": "VFY-CFG-006",
+     "severity": "low",
+     "message": "Not behind the Verfy gateway: its tool calls are not pre-checked or receipted (`verfy wrap`).",
+     "where": "command"
+    }
+   ],
+   "package": {
+    "index": 0,
+    "ecosystem": "pypi",
+    "package": "mcp-server-git[extra]>=1.0",
+    "name": "mcp-server-git[extra]"
+   }
+  },
+  {
+   "name": "gateway with nothing behind it",
+   "spec": {
+    "command": "verfy",
+    "args": [
+     "proxy",
+     "--name",
+     "x",
+     "--"
+    ]
+   },
+   "local": [],
+   "expect": [],
+   "package": null
   }
  ],
  "configs": [

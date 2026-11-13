@@ -2,7 +2,7 @@
 
 Verfy Lock assumes that tool definitions change after you approve them. This folder measures how often that happens in practice, so the claim rests on data instead of on a demo server.
 
-- `servers.json`: the servers we look at: popular npm and PyPI MCP servers, including the reference servers.
+- `servers.json`: the servers we look at: popular npm and PyPI MCP servers, including the reference servers. The 53 added on 13 November 2026 each had at least 2,000 downloads a week.
 - `tool_history.py`: for one server, takes its newest releases from the registry, starts each one with `npx` or `uvx` the way an MCP client would, and records every tool definition, its Verfy pin (SHA-256 of name, description, input schema and, when sent, title, annotations and output schema) and the Verfy scanner's findings.
 - `report.py`: compares consecutive releases (added, removed and changed tools; description or schema; patch, minor or major release) and lists scanner findings.
 - `.github/workflows/research.yml`: runs all of it on throwaway GitHub runners, every Monday and on demand. Each run looks at a server's newest releases; [verfy.dev/servers](https://verfy.dev/servers) merges the runs into one history per server.

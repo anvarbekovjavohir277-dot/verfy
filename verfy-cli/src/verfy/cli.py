@@ -19,6 +19,8 @@ from . import __version__
 from . import agentfiles
 from . import agents as agentlib
 from . import posture as posturelib
+from . import mcpserver
+from . import report as reports
 from . import bridge as bridges
 from . import imports
 from . import discover as cfgscan
@@ -1509,6 +1511,63 @@ def _print_setup_done(items: list[dict]) -> None:
         print(f"              {CHECK_NOTE}")
 
 
+def cmd_mcp(args) -> int:
+    """Verfy as an MCP server on stdio: read-only checks an agent can ask for."""
+    return mcpserver.main(lambda: resolve_policy(Path.cwd(), workspace=str(Path.cwd())), verfy_home())
+
+
+def _report_data(args) -> dict:
+    home, cwd, vhome = Path.home(), Path.cwd(), verfy_home()
+    agents = []
+    claude_here = _claude_code_present()
+    for key, (label, where, _add, folder) in hooks.INSTALL.items():
+        path = where(False)
+        state = _hook_state(path, key)
+        machine = agentlib.system_hooked(key)
+        present = claude_here if key == "claude-code" else home.joinpath(*folder).is_dir()
+        if machine:
+            agents.append({"agent": key, "label": label, "state": "system", "path": str(machine)})
+        elif present or state != "off":
+            agents.append({"agent": key, "label": label, "state": state, "path": _short(path)})
+    scan_rep = cfgscan.scan_configs(cfgscan.discover(home, cwd))
+    lock_p = Path(args.lock) if args.lock else cwd / "verfy.lock"
+    lock: dict = {"found": False, "path": str(lock_p)}
+    if lock_p.exists():
+        try:
+            servers = locks.load_lock(lock_p).get("servers", {})
+            lock = {"found": True, "path": str(lock_p), "servers": len(servers), "tools": sum(len(s.get("tools", {})) for s in servers.values())}
+        except (OSError, ValueError):
+            pass
+    ledger_p = home_file("ledger.jsonl")
+    try:
+        entries = read_ledger(ledger_p) if ledger_p.exists() else []
+    except (OSError, ValueError):
+        entries = []
+    summary = mcpserver.receipts_summary({"count": 20}, vhome) if entries else {"receipts": [], "chain": {}}
+    return {
+        "v": 1, "version": __version__, "made": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+        "agents": agents, "posture": posturelib.as_json(posturelib.check(home, cwd))["findings"],
+        "servers": [{"server": s["server"], "config": _short(Path(s["config"])) if s["config"] else "", "transport": s["transport"], "findings": s["findings"]} for s in scan_rep["servers"]],
+        "lock": lock, "receipts": reports.receipt_stats(entries), "latest": list(reversed(summary["receipts"])), "chain": summary.get("chain") or {},
+    }
+
+
+def cmd_report(args) -> int:
+    """One HTML page about this computer: agents, risky settings, MCP servers, the lock and the receipts."""
+    data = _report_data(args)
+    if args.json:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        return 0
+    out = Path(args.out)
+    out.write_text(reports.build(data), "utf-8")
+    print(f"Wrote {out.resolve()}")
+    print("Open it in a browser. It is one file with no script and nothing loaded from outside; it holds no secret.")
+    if args.open:
+        import webbrowser
+        webbrowser.open(out.resolve().as_uri())
+    return 0
+
+
 def cmd_posture(args) -> int:
     if args.write and not args.fix:
         print("--write goes with --fix: `verfy posture --fix` shows the edits, `verfy posture --fix --write` makes them.", file=sys.stderr)
@@ -2257,6 +2316,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write", action="store_true", help="with --fix: make the edits; the old file is kept next to each one")
     p.add_argument("--min", choices=["low", "medium", "high"], default="low", help="with --fix: only findings at this severity or above (default: all)")
     p.set_defaults(fn=cmd_posture)
+
+    p = sub.add_parser("mcp", help="run Verfy as an MCP server on stdio: read-only checks an agent can ask for (a command, a config, tool definitions, receipts)")
+    p.set_defaults(fn=cmd_mcp)
+
+    p = sub.add_parser("report", help="write one HTML page about this computer: guarded agents, risky settings, MCP servers, the lock and the receipts")
+    p.add_argument("--out", default="verfy-report.html", help="where to write it (default ./verfy-report.html)")
+    p.add_argument("--lock", help="lock file to look at (default ./verfy.lock)")
+    p.add_argument("--json", action="store_true", help="print the data instead of writing the page")
+    p.add_argument("--open", action="store_true", help="open the page in the browser")
+    p.set_defaults(fn=cmd_report)
 
     p = sub.add_parser("setup", help="set Verfy up for every coding agent found here at once: hooks and MCP gateway")
     p.add_argument("--write", action="store_true", help="make the changes (without it, only show them); a backup of every file is kept")

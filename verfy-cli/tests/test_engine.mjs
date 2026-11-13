@@ -71,7 +71,10 @@ async function main() {
   // how MCP servers are launched (the config rules VFY-CFG-001..007)
   const cfg = JSON.parse(fs.readFileSync(path.join(FX, "config.json"), "utf8"));
   const real = (v) => JSON.parse(JSON.stringify(v).split(cfg.token).join("ghp_" + "a".repeat(36)));
-  for (const c of cfg.cases) expect("config: " + c.name, K.checkServer(c.name, real(c.spec), c.local), c.expect);
+  for (const c of cfg.cases) {
+    expect("config: " + c.name, K.checkServer(c.name, real(c.spec), c.local), c.expect);
+    expect("package: " + c.name, K.packageOf(real(c.spec)), c.package);
+  }
   for (const c of cfg.configs) {
     const rep = K.checkConfig(c.data);
     expect("config file: " + Object.keys(c.data)[0], { servers: rep.servers, summary: rep.summary }, c.expect);

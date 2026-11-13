@@ -19,6 +19,11 @@ FILES = [
     ("plugins/verfy/.claude-plugin/plugin.json", r'"version": "[^"]+"', '"version": "{v}"'),
     ("ide/vscode/package.json", r'"version": "[^"]+"', '"version": "{v}"'),
     ("verfy-cli/README.md", r"verfy==\d+\.\d+\.\d+", "verfy=={v}"),
+    ("pyproject.toml", r'(?m)^version = "[^"]+"$', 'version = "{v}"'),
+    ("pyproject.toml", r"verfy==\d+\.\d+\.\d+", "verfy=={v}"),
+    (".pre-commit-hooks.yaml", r"rev: cli-v\d+\.\d+\.\d+", "rev: cli-v{v}"),
+    ("verfy-cli/README.md", r"rev: cli-v\d+\.\d+\.\d+", "rev: cli-v{v}"),
+    ("verfy-cli/examples/ci/gitlab-ci.yml", r'VERFY_VERSION: "\d+\.\d+\.\d+"', 'VERFY_VERSION: "{v}"'),
 ]
 
 
